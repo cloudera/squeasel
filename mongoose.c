@@ -487,6 +487,9 @@ static const char *config_options[] = {
 
 struct mg_context {
   volatile int stop_flag;         // Should we stop event loop
+  int wakeup_fds[2];              // File descriptors used to wake up
+                                  // master thread.
+
   SSL_CTX *ssl_ctx;               // SSL context
   char *config[NUM_OPTIONS];      // Mongoose configuration parameters
   struct mg_callbacks callbacks;  // User-defined callback function
@@ -5270,14 +5273,16 @@ static void *master_thread(void *thread_func_param) {
   pthread_setschedparam(pthread_self(), SCHED_RR, &sched_param);
 #endif
 
-  pfd = (struct pollfd *) calloc(ctx->num_listening_sockets, sizeof(pfd[0]));
+  pfd = (struct pollfd *) calloc(ctx->num_listening_sockets + 1, sizeof(pfd[0]));
   while (pfd != NULL && ctx->stop_flag == 0) {
     for (i = 0; i < ctx->num_listening_sockets; i++) {
       pfd[i].fd = ctx->listening_sockets[i].sock;
       pfd[i].events = POLLIN;
     }
+    pfd[ctx->num_listening_sockets].fd = ctx->wakeup_fds[0];
+    pfd[ctx->num_listening_sockets].events = POLLIN;
 
-    if (poll(pfd, ctx->num_listening_sockets, 200) > 0) {
+    if (poll(pfd, ctx->num_listening_sockets + 1, 200) > 0) {
       for (i = 0; i < ctx->num_listening_sockets; i++) {
         // NOTE(lsm): on QNX, poll() returns POLLRDNORM after the
         // successfull poll, and POLLIN is defined as (POLLRDNORM | POLLRDBAND)
@@ -5294,6 +5299,10 @@ static void *master_thread(void *thread_func_param) {
 
   // Stop signal received: somebody called mg_stop. Quit.
   close_all_listening_sockets(ctx);
+
+  // Close the wakeup fds
+  close(ctx->wakeup_fds[0]);
+  close(ctx->wakeup_fds[1]);
 
   // Wakeup workers that are waiting for connections to handle.
   pthread_cond_broadcast(&ctx->sq_full);
@@ -5348,7 +5357,13 @@ static void free_context(struct mg_context *ctx) {
 }
 
 void mg_stop(struct mg_context *ctx) {
+  int unused;
+  char c = 0;
   ctx->stop_flag = 1;
+
+  if (ctx->wakeup_fds[1] != -1) {
+    unused = write(ctx->wakeup_fds[1], &c, 1);
+  }
 
   // Wait until mg_fini() stops
   while (ctx->stop_flag != 2) {
@@ -5435,6 +5450,16 @@ struct mg_context *mg_start(const struct mg_callbacks *callbacks,
   (void) pthread_cond_init(&ctx->cond, NULL);
   (void) pthread_cond_init(&ctx->sq_empty, NULL);
   (void) pthread_cond_init(&ctx->sq_full, NULL);
+
+  // Create a pipe used for mg_stop to wake up the master thread.
+  ctx->wakeup_fds[0] = -1;
+  ctx->wakeup_fds[1] = -1;
+  if (pipe(ctx->wakeup_fds) != 0) {
+    cry(fc(ctx), "Cannot create wakeup_fds: %ld", (long) ERRNO);
+  } else {
+    set_close_on_exec(ctx->wakeup_fds[0]);
+    set_close_on_exec(ctx->wakeup_fds[1]);
+  }
 
   // Start master (listening) thread
   mg_start_thread(master_thread, ctx);
