@@ -1,3 +1,12 @@
+# Note on fork
+
+This is a fork of mongoose, branched at the last commit of Mongoose that
+was released as MIT license. Newer versions of Mongoose are now licensed
+as GPLv2, so we cannot use them in our projects.
+
+If you are developing this fork, please *do not* look at any upstream
+Mongoose development.
+
 # Project Mission
 
 Project mission is to provide easy to use, powerful, embeddable web server.
