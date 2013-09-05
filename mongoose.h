@@ -31,6 +31,7 @@ extern "C" {
 struct mg_context;     // Handle for the HTTP service itself
 struct mg_connection;  // Handle for the individual connection
 
+struct sockaddr_in;
 
 // This structure contains information about the HTTP request.
 struct mg_request_info {
@@ -179,6 +180,16 @@ const char *mg_get_option(const struct mg_context *ctx, const char *name);
 // Array is NULL terminated.
 const char **mg_get_valid_option_names(void);
 
+
+// Return the addresses that the given context is bound to. *addrs is allocated
+// using malloc to be an array of sockaddr*, each of which is itself malloced.
+// *num_addrs is set to the number of returned addresses.
+// The user is responsible for calling free() on each address as well as the
+// 'addrs' array itself, unless an error occurs.
+//
+// Returns 0 on success, non-zero if an error occurred.
+int mg_get_bound_addresses(const struct mg_context *ctx, struct sockaddr_in ***addrs,
+                           int *num_addrs);
 
 // Add, edit or delete the entry in the passwords file.
 //

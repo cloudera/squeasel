@@ -662,9 +662,9 @@ static void cry(struct mg_connection *conn, const char *fmt, ...) {
 
 // Return fake connection structure. Used for logging, if connection
 // is not applicable at the moment of logging.
-static struct mg_connection *fc(struct mg_context *ctx) {
+static struct mg_connection *fc(const struct mg_context *ctx) {
   static struct mg_connection fake_connection;
-  fake_connection.ctx = ctx;
+  fake_connection.ctx = (struct mg_context*)ctx;
   return &fake_connection;
 }
 
@@ -1377,6 +1377,13 @@ static int set_non_blocking_mode(SOCKET sock) {
   return ioctlsocket(sock, FIONBIO, &on);
 }
 
+int mg_get_bound_addresses(const struct mg_context *ctx, struct sockaddr_in ***addrs,
+                           int *num_addrs) {
+  // Not supported on Windows.
+  // TODO(cloudera): remove Windows code.
+  return 1;
+}
+
 #else
 static int mg_stat(struct mg_connection *conn, const char *path,
                    struct file *filep) {
@@ -1473,6 +1480,50 @@ static int set_non_blocking_mode(SOCKET sock) {
 
   return 0;
 }
+
+int mg_get_bound_addresses(const struct mg_context *ctx, struct sockaddr_in ***addrs,
+                           int *num_addrs) {
+  int n = ctx->num_listening_sockets;
+  int rc = 1;
+  int i;
+
+  struct sockaddr_in **addr_array = calloc(n, sizeof(struct sockaddr_in *));
+  if (addr_array == NULL) {
+    cry(fc(ctx), "%s: cannot allocate memory", __func__);
+    goto cleanup;
+  }
+  *addrs = addr_array;
+
+  for (i = 0; i < n; i++) {
+    addr_array[i] = malloc(sizeof(*addr_array[i]));
+    if (addr_array[i] == NULL) {
+      cry(fc(ctx), "%s: cannot allocate memory", __func__);
+      goto cleanup;
+    }
+
+    socklen_t len = sizeof(struct sockaddr_in *);
+    if (getsockname(ctx->listening_sockets[i].sock, (struct sockaddr*)addr_array[i],
+                    &len) != 0) {
+      cry(fc(ctx), "%s: cannot get socket name: %s", __func__, strerror(errno));
+      goto cleanup;
+    }
+  }
+
+  *num_addrs = n;
+
+  return 0;
+
+  cleanup:
+  if (addr_array) {
+    for (i = 0; i < n; i++) {
+      free(addr_array[i]);
+    }
+    free(addr_array);
+  }
+  return rc;
+}
+
+
 #endif // _WIN32
 
 // Write data to the IO channel - opened file descriptor, socket or SSL
@@ -4541,7 +4592,7 @@ static void close_all_listening_sockets(struct mg_context *ctx) {
 }
 
 static int is_valid_port(unsigned int port) {
-  return port > 0 && port < 0xffff;
+  return port <= 0xffff;
 }
 
 // Valid listening port specification is: [ip_address:]port[s]
