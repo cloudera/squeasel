@@ -19,19 +19,19 @@ endif
 all: hello upload post websocket chat lua_dll
 
 hello:
-	$(CC) $(CFLAGS) hello.c ../mongoose.c  -o $@
+	$(CC) $(CFLAGS) hello.c ../squeasel.c  -o $@
 
 upload:
-	$(CC) $(CFLAGS) upload.c ../mongoose.c -o $@
+	$(CC) $(CFLAGS) upload.c ../squeasel.c -o $@
 
 post:
-	$(CC) $(CFLAGS) post.c ../mongoose.c -o $@
+	$(CC) $(CFLAGS) post.c ../squeasel.c -o $@
 
 websocket:
-	$(CC) $(CFLAGS) -DUSE_WEBSOCKET websocket.c ../mongoose.c -o $@
+	$(CC) $(CFLAGS) -DUSE_WEBSOCKET websocket.c ../squeasel.c -o $@
 
 chat:
-	$(CC) $(CFLAGS) chat.c ../mongoose.c -o $@
+	$(CC) $(CFLAGS) chat.c ../squeasel.c -o $@
 
 lua_dll:
 	$(CC) $(CFLAGS) $(DLL_FLAGS) lua_dll.c -o $@.so
@@ -44,12 +44,12 @@ CLFLAGS = /MD /TC /nologo $(DBG) /W3 /DNO_SSL \
 LFLAGS  = /link /incremental:no /libpath:$(MSVC)/lib /machine:IX86
 
 windows:
-	$(CL) upload.c ../mongoose.c $(CLFLAGS) $(LFLAGS)
-	$(CL) hello.c ../mongoose.c $(CLFLAGS) $(LFLAGS)
-	$(CL) upload.c ../mongoose.c $(CLFLAGS) $(LFLAGS)
-	$(CL) post.c ../mongoose.c $(CLFLAGS) $(LFLAGS)
-	$(CL) post.c ../mongoose.c $(CLFLAGS) $(LFLAGS)
-	$(CL) /DUSE_WEBSOCKET websocket.c ../mongoose.c $(CLFLAGS) $(LFLAGS)
+	$(CL) upload.c ../squeasel.c $(CLFLAGS) $(LFLAGS)
+	$(CL) hello.c ../squeasel.c $(CLFLAGS) $(LFLAGS)
+	$(CL) upload.c ../squeasel.c $(CLFLAGS) $(LFLAGS)
+	$(CL) post.c ../squeasel.c $(CLFLAGS) $(LFLAGS)
+	$(CL) post.c ../squeasel.c $(CLFLAGS) $(LFLAGS)
+	$(CL) /DUSE_WEBSOCKET websocket.c ../squeasel.c $(CLFLAGS) $(LFLAGS)
 #$(CL) lua_dll.c $(CLFLAGS) $(DLL_FLAGS) /DLL $(LFLAGS) /SUBSYSTEM:WINDOWS /ENTRY:luaopen_lua_dll /EXPORT:luaopen_lua_dll /out:lua_dll.dll
 
 clean:

@@ -1,15 +1,15 @@
 LIBRARY
 EXPORTS
-	mg_start
-	mg_stop
-	mg_read
-	mg_write
-	mg_printf
-	mg_get_header
-	mg_get_var
-	mg_get_cookie
-	mg_get_option
-	mg_get_valid_option_names
-	mg_version
-	mg_modify_passwords_file
-	mg_md5
+	sq_start
+	sq_stop
+	sq_read
+	sq_write
+	sq_printf
+	sq_get_header
+	sq_get_var
+	sq_get_cookie
+	sq_get_option
+	sq_get_valid_option_names
+	sq_version
+	sq_modify_passwords_file
+	sq_md5

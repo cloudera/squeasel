@@ -21,8 +21,8 @@ static void *mmap(void *addr, int64_t len, int prot, int flags, int fd,
 static const char *LUASOCKET = "luasocket";
 
 // Forward declarations
-static void handle_request(struct mg_connection *);
-static int handle_lsp_request(struct mg_connection *, const char *,
+static void handle_request(struct sq_connection *);
+static int handle_lsp_request(struct sq_connection *, const char *,
                               struct file *, struct lua_State *);
 
 static void reg_string(struct lua_State *L, const char *name, const char *val) {
@@ -38,7 +38,7 @@ static void reg_int(struct lua_State *L, const char *name, int val) {
 }
 
 static void reg_function(struct lua_State *L, const char *name,
-                         lua_CFunction func, struct mg_connection *conn) {
+                         lua_CFunction func, struct sq_connection *conn) {
   lua_pushstring(L, name);
   lua_pushlightuserdata(L, conn);
   lua_pushcclosure(L, func, 1);
@@ -143,7 +143,7 @@ static void lsp_abort(lua_State *L) {
   lua_error(L);
 }
 
-static int lsp(struct mg_connection *conn, const char *path,
+static int lsp(struct sq_connection *conn, const char *path,
                const char *p, int64_t len, lua_State *L) {
   int i, j, pos = 0, lines = 1, lualines = 0;
   char chunkname[MG_BUF_LEN];
@@ -154,7 +154,7 @@ static int lsp(struct mg_connection *conn, const char *path,
       for (j = i + 1; j < len ; j++) {
         if (p[j] == '\n') lualines++;
         if (p[j] == '?' && p[j + 1] == '>') {
-          mg_write(conn, p + pos, i - pos);
+          sq_write(conn, p + pos, i - pos);
 
           snprintf(chunkname, sizeof(chunkname), "@%s+%i", path, lines);
           lua_pushlightuserdata(L, conn);
@@ -180,7 +180,7 @@ static int lsp(struct mg_connection *conn, const char *path,
   }
 
   if (i > pos) {
-    mg_write(conn, p + pos, i - pos);
+    sq_write(conn, p + pos, i - pos);
   }
 
   return 0;
@@ -190,13 +190,13 @@ static int lsp_write(lua_State *L) {
   int i, num_args;
   const char *str;
   size_t size;
-  struct mg_connection *conn = lua_touserdata(L, lua_upvalueindex(1));
+  struct sq_connection *conn = lua_touserdata(L, lua_upvalueindex(1));
 
   num_args = lua_gettop(L);
   for (i = 1; i <= num_args; i++) {
     if (lua_isstring(L, i)) {
       str = lua_tolstring(L, i, &size);
-      mg_write(conn, str, size);
+      sq_write(conn, str, size);
     }
   }
 
@@ -204,9 +204,9 @@ static int lsp_write(lua_State *L) {
 }
 
 static int lsp_read(lua_State *L) {
-  struct mg_connection *conn = lua_touserdata(L, lua_upvalueindex(1));
+  struct sq_connection *conn = lua_touserdata(L, lua_upvalueindex(1));
   char buf[1024];
-  int len = mg_read(conn, buf, sizeof(buf));
+  int len = sq_read(conn, buf, sizeof(buf));
 
   if (len <= 0) return 0;
   lua_pushlstring(L, buf, len);
@@ -216,7 +216,7 @@ static int lsp_read(lua_State *L) {
 
 // mg.include: Include another .lp file
 static int lsp_include(lua_State *L) {
-  struct mg_connection *conn = lua_touserdata(L, lua_upvalueindex(1));
+  struct sq_connection *conn = lua_touserdata(L, lua_upvalueindex(1));
   struct file file = STRUCT_FILE_INITIALIZER;
   if (handle_lsp_request(conn, lua_tostring(L, -1), &file, L)) {
     // handle_lsp_request returned an error code, meaning an error occured in
@@ -228,22 +228,22 @@ static int lsp_include(lua_State *L) {
 
 // mg.cry: Log an error. Default value for mg.onerror.
 static int lsp_cry(lua_State *L){
-  struct mg_connection *conn = lua_touserdata(L, lua_upvalueindex(1));
+  struct sq_connection *conn = lua_touserdata(L, lua_upvalueindex(1));
   cry(conn, "%s", lua_tostring(L, -1));
   return 0;
 }
 
 // mg.redirect: Redirect the request (internally).
 static int lsp_redirect(lua_State *L) {
-  struct mg_connection *conn = lua_touserdata(L, lua_upvalueindex(1));
+  struct sq_connection *conn = lua_touserdata(L, lua_upvalueindex(1));
   conn->request_info.uri = lua_tostring(L, -1);
   handle_request(conn);
   lsp_abort(L);
   return 0;
 }
 
-static void prepare_lua_environment(struct mg_connection *conn, lua_State *L) {
-  const struct mg_request_info *ri = mg_get_request_info(conn);
+static void prepare_lua_environment(struct sq_connection *conn, lua_State *L) {
+  const struct sq_request_info *ri = sq_get_request_info(conn);
   extern void luaL_openlibs(lua_State *);
   int i;
 
@@ -315,7 +315,7 @@ static int lua_error_handler(lua_State *L) {
   return 0;
 }
 
-void mg_exec_lua_script(struct mg_connection *conn, const char *path,
+void sq_exec_lua_script(struct sq_connection *conn, const char *path,
                         const void **exports) {
   int i;
   lua_State *L;
@@ -341,7 +341,7 @@ void mg_exec_lua_script(struct mg_connection *conn, const char *path,
   }
 }
 
-static void lsp_send_err(struct mg_connection *conn, struct lua_State *L,
+static void lsp_send_err(struct sq_connection *conn, struct lua_State *L,
                          const char *fmt, ...) {
   char buf[MG_BUF_LEN];
   va_list ap;
@@ -359,14 +359,14 @@ static void lsp_send_err(struct mg_connection *conn, struct lua_State *L,
   }
 }
 
-static int handle_lsp_request(struct mg_connection *conn, const char *path,
+static int handle_lsp_request(struct sq_connection *conn, const char *path,
                                struct file *filep, struct lua_State *ls) {
   void *p = NULL;
   lua_State *L = NULL;
   int error = 1;
 
-  // We need both mg_stat to get file size, and mg_fopen to get fd
-  if (!mg_stat(conn, path, filep) || !mg_fopen(conn, path, "r", filep)) {
+  // We need both sq_stat to get file size, and sq_fopen to get fd
+  if (!sq_stat(conn, path, filep) || !sq_fopen(conn, path, "r", filep)) {
     lsp_send_err(conn, ls, "File [%s] not found", path);
   } else if (filep->membuf == NULL &&
              (p = mmap(NULL, (size_t) filep->size, PROT_READ, MAP_PRIVATE,
@@ -389,6 +389,6 @@ static int handle_lsp_request(struct mg_connection *conn, const char *path,
 
   if (L != NULL && ls == NULL) lua_close(L);
   if (p != NULL) munmap(p, filep->size);
-  mg_fclose(filep);
+  sq_fclose(filep);
   return error;
 }

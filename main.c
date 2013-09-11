@@ -35,7 +35,7 @@
 #include <stdarg.h>
 #include <ctype.h>
 
-#include "mongoose.h"
+#include "squeasel.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -70,10 +70,10 @@
 static int exit_flag;
 static char server_name[40];        // Set by init_server_name()
 static char config_file[PATH_MAX];  // Set by process_command_line_arguments()
-static struct mg_context *ctx;      // Set by start_mongoose()
+static struct sq_context *ctx;      // Set by start_squeasel()
 
 #if !defined(CONFIG_FILE)
-#define CONFIG_FILE "mongoose.conf"
+#define CONFIG_FILE "squeasel.conf"
 #endif /* !CONFIG_FILE */
 
 static void WINCDECL signal_handler(int sig_num) {
@@ -101,15 +101,15 @@ static void show_usage_and_exit(void) {
   const char **names;
   int i;
 
-  fprintf(stderr, "Mongoose version %s (c) Sergey Lyubka, built on %s\n",
-          mg_version(), __DATE__);
+  fprintf(stderr, "Squeasel version %s (c) Sergey Lyubka, built on %s\n",
+          sq_version(), __DATE__);
   fprintf(stderr, "Usage:\n");
-  fprintf(stderr, "  mongoose -A <htpasswd_file> <realm> <user> <passwd>\n");
-  fprintf(stderr, "  mongoose [config_file]\n");
-  fprintf(stderr, "  mongoose [-option value ...]\n");
+  fprintf(stderr, "  squeasel -A <htpasswd_file> <realm> <user> <passwd>\n");
+  fprintf(stderr, "  squeasel [config_file]\n");
+  fprintf(stderr, "  squeasel [-option value ...]\n");
   fprintf(stderr, "\nOPTIONS:\n");
 
-  names = mg_get_valid_option_names();
+  names = sq_get_valid_option_names();
   for (i = 0; names[i] != NULL; i += 2) {
     fprintf(stderr, "  -%s %s\n",
             names[i], names[i + 1] == NULL ? "<empty>" : names[i + 1]);
@@ -119,16 +119,16 @@ static void show_usage_and_exit(void) {
 
 #if defined(_WIN32) || defined(USE_COCOA)
 static const char *config_file_top_comment =
-"# Mongoose web server configuration file.\n"
+"# Squeasel web server configuration file.\n"
 "# For detailed description of every option, visit\n"
-"# https://github.com/valenok/mongoose/blob/master/UserManual.md\n"
+"# https://github.mtv.cloudera.com/CDH/squeasel/blob/master/UserManual.md\n"
 "# Lines starting with '#' and empty lines are ignored.\n"
 "# To make a change, remove leading '#', modify option's value,\n"
-"# save this file and then restart Mongoose.\n\n";
+"# save this file and then restart Squeasel.\n\n";
 
-static const char *get_url_to_first_open_port(const struct mg_context *ctx) {
+static const char *get_url_to_first_open_port(const struct sq_context *ctx) {
   static char url[100];
-  const char *open_ports = mg_get_option(ctx, "listening_ports");
+  const char *open_ports = sq_get_option(ctx, "listening_ports");
   int a, b, c, d, port, n;
 
   if (sscanf(open_ports, "%d.%d.%d.%d:%d%n", &a, &b, &c, &d, &port, &n) == 5) {
@@ -154,9 +154,9 @@ static void create_config_file(const char *path) {
     fclose(fp);
   } else if ((fp = fopen(path, "a+")) != NULL) {
     fprintf(fp, "%s", config_file_top_comment);
-    names = mg_get_valid_option_names();
+    names = sq_get_valid_option_names();
     for (i = 0; names[i * 2] != NULL; i++) {
-      value = mg_get_option(ctx, names[i * 2]);
+      value = sq_get_option(ctx, names[i * 2]);
       fprintf(fp, "# %s %s\n", names[i * 2], value ? value : "<value>");
     }
     fclose(fp);
@@ -258,11 +258,11 @@ static void process_command_line_arguments(char *argv[], char **options) {
 }
 
 static void init_server_name(void) {
-  snprintf(server_name, sizeof(server_name), "Mongoose web server v.%s",
-           mg_version());
+  snprintf(server_name, sizeof(server_name), "Squeasel web server v.%s",
+           sq_version());
 }
 
-static int log_message(const struct mg_connection *conn, const char *message) {
+static int log_message(const struct sq_connection *conn, const char *message) {
   (void) conn;
   printf("%s\n", message);
   return 0;
@@ -296,13 +296,13 @@ static void verify_existence(char **options, const char *option_name,
   if (path != NULL && (stat(path, &st) != 0 ||
                        ((S_ISDIR(st.st_mode) ? 1 : 0) != must_be_dir))) {
     die("Invalid path for %s: [%s]: (%s). Make sure that path is either "
-        "absolute, or it is relative to mongoose executable.",
+        "absolute, or it is relative to squeasel executable.",
         option_name, path, strerror(errno));
   }
 }
 
 static void set_absolute_path(char *options[], const char *option_name,
-                              const char *path_to_mongoose_exe) {
+                              const char *path_to_squeasel_exe) {
   char path[PATH_MAX], abs[PATH_MAX], *option_value;
   const char *p;
 
@@ -312,14 +312,14 @@ static void set_absolute_path(char *options[], const char *option_name,
   // If option is already set and it is an absolute path,
   // leave it as it is -- it's already absolute.
   if (option_value != NULL && !is_path_absolute(option_value)) {
-    // Not absolute. Use the directory where mongoose executable lives
+    // Not absolute. Use the directory where squeasel executable lives
     // be the relative directory for everything.
-    // Extract mongoose executable directory into path.
-    if ((p = strrchr(path_to_mongoose_exe, DIRSEP)) == NULL) {
+    // Extract squeasel executable directory into path.
+    if ((p = strrchr(path_to_squeasel_exe, DIRSEP)) == NULL) {
       getcwd(path, sizeof(path));
     } else {
-      snprintf(path, sizeof(path), "%.*s", (int) (p - path_to_mongoose_exe),
-               path_to_mongoose_exe);
+      snprintf(path, sizeof(path), "%.*s", (int) (p - path_to_squeasel_exe),
+               path_to_squeasel_exe);
     }
 
     strncat(path, "/", sizeof(path) - 1);
@@ -331,8 +331,8 @@ static void set_absolute_path(char *options[], const char *option_name,
   }
 }
 
-static void start_mongoose(int argc, char *argv[]) {
-  struct mg_callbacks callbacks;
+static void start_squeasel(int argc, char *argv[]) {
+  struct sq_callbacks callbacks;
   char *options[MAX_OPTIONS];
   int i;
 
@@ -341,7 +341,7 @@ static void start_mongoose(int argc, char *argv[]) {
     if (argc != 6) {
       show_usage_and_exit();
     }
-    exit(mg_modify_passwords_file(argv[2], argv[3], argv[4], argv[5]) ?
+    exit(sq_modify_passwords_file(argv[2], argv[3], argv[4], argv[5]) ?
          EXIT_SUCCESS : EXIT_FAILURE);
   }
 
@@ -357,7 +357,7 @@ static void start_mongoose(int argc, char *argv[]) {
   process_command_line_arguments(argv, options);
 
   // Make sure we have absolute paths for files and directories
-  // https://github.com/valenok/mongoose/issues/181
+  // https://github.mtv.cloudera.com/CDH/squeasel/issues/181
   set_absolute_path(options, "document_root", argv[0]);
   set_absolute_path(options, "put_delete_auth_file", argv[0]);
   set_absolute_path(options, "cgi_interpreter", argv[0]);
@@ -375,16 +375,16 @@ static void start_mongoose(int argc, char *argv[]) {
   signal(SIGTERM, signal_handler);
   signal(SIGINT, signal_handler);
 
-  // Start Mongoose
+  // Start Squeasel
   memset(&callbacks, 0, sizeof(callbacks));
   callbacks.log_message = &log_message;
-  ctx = mg_start(&callbacks, NULL, (const char **) options);
+  ctx = sq_start(&callbacks, NULL, (const char **) options);
   for (i = 0; options[i] != NULL; i++) {
     free(options[i]);
   }
 
   if (ctx == NULL) {
-    die("%s", "Failed to start Mongoose.");
+    die("%s", "Failed to start Squeasel.");
   }
 }
 
@@ -428,7 +428,7 @@ static void WINAPI ServiceMain(void) {
   while (ss.dwCurrentState == SERVICE_RUNNING) {
     Sleep(1000);
   }
-  mg_stop(ctx);
+  sq_stop(ctx);
 
   ss.dwCurrentState = SERVICE_STOPPED;
   ss.dwWin32ExitCode = (DWORD) -1;
@@ -480,7 +480,7 @@ static void save_config(HWND hDlg, FILE *fp) {
   int i, id;
 
   fprintf(fp, "%s", config_file_top_comment);
-  options = mg_get_valid_option_names();
+  options = sq_get_valid_option_names();
   for (i = 0; options[i * 2] != NULL; i++) {
     name = options[i * 2];
     id = ID_CONTROLS + i;
@@ -501,7 +501,7 @@ static void save_config(HWND hDlg, FILE *fp) {
 static BOOL CALLBACK DlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lP) {
   FILE *fp;
   int i;
-  const char *name, *value, **options = mg_get_valid_option_names();
+  const char *name, *value, **options = sq_get_valid_option_names();
 
   switch (msg) {
     case WM_CLOSE:
@@ -515,8 +515,8 @@ static BOOL CALLBACK DlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lP) {
           if ((fp = fopen(config_file, "w+")) != NULL) {
             save_config(hDlg, fp);
             fclose(fp);
-            mg_stop(ctx);
-            start_mongoose(__argc, __argv);
+            sq_stop(ctx);
+            start_squeasel(__argc, __argv);
           }
           EnableWindow(GetDlgItem(hDlg, ID_SAVE), TRUE);
           break;
@@ -547,7 +547,7 @@ static BOOL CALLBACK DlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lP) {
           of.hwndOwner = (HWND) hDlg;
           of.lpstrFile = path;
           of.nMaxFile = sizeof(path);
-          of.lpstrInitialDir = mg_get_option(ctx, "document_root");
+          of.lpstrInitialDir = sq_get_option(ctx, "document_root");
           of.Flags = OFN_CREATEPROMPT | OFN_NOCHANGEDIR;
 
           memset(&bi, 0, sizeof(bi));
@@ -572,11 +572,11 @@ static BOOL CALLBACK DlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lP) {
     case WM_INITDIALOG:
       SendMessage(hDlg, WM_SETICON,(WPARAM) ICON_SMALL, (LPARAM) hIcon);
       SendMessage(hDlg, WM_SETICON,(WPARAM) ICON_BIG, (LPARAM) hIcon);
-      SetWindowText(hDlg, "Mongoose settings");
+      SetWindowText(hDlg, "Squeasel settings");
       SetFocus(GetDlgItem(hDlg, ID_SAVE));
       for (i = 0; options[i * 2] != NULL; i++) {
         name = options[i * 2];
-        value = mg_get_option(ctx, name);
+        value = sq_get_option(ctx, name);
         if (is_boolean_option(name)) {
           CheckDlgButton(hDlg, ID_CONTROLS + i, !strcmp(value, "yes") ?
                          BST_CHECKED : BST_UNCHECKED);
@@ -657,7 +657,7 @@ static void show_settings_dialog() {
   (void) memcpy(mem, &dialog_header, sizeof(dialog_header));
   p = mem + sizeof(dialog_header);
 
-  option_names = mg_get_valid_option_names();
+  option_names = sq_get_valid_option_names();
   for (i = 0; option_names[i * 2] != NULL; i++) {
     long_option_name = option_names[i * 2];
     style = WS_CHILD | WS_VISIBLE | WS_TABSTOP;
@@ -712,7 +712,7 @@ static void show_settings_dialog() {
 }
 
 static int manage_service(int action) {
-  static const char *service_name = "Mongoose";
+  static const char *service_name = "Squeasel";
   SC_HANDLE hSCM = NULL, hService = NULL;
   SERVICE_DESCRIPTION descr = {server_name};
   char path[PATH_MAX + 20];  // Path to executable plus magic argument
@@ -767,18 +767,18 @@ static LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam,
     case WM_CREATE:
       if (__argv[1] != NULL &&
           !strcmp(__argv[1], service_magic_argument)) {
-        start_mongoose(1, service_argv);
+        start_squeasel(1, service_argv);
         StartServiceCtrlDispatcher(service_table);
         exit(EXIT_SUCCESS);
       } else {
-        start_mongoose(__argc, __argv);
+        start_squeasel(__argc, __argv);
         s_uTaskbarRestart = RegisterWindowMessage(TEXT("TaskbarCreated"));
       }
       break;
     case WM_COMMAND:
       switch (LOWORD(wParam)) {
         case ID_QUIT:
-          mg_stop(ctx);
+          sq_stop(ctx);
           Shell_NotifyIcon(NIM_DELETE, &TrayIcon);
           PostQuitMessage(0);
           return 0;
@@ -826,7 +826,7 @@ static LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam,
       }
       break;
     case WM_CLOSE:
-      mg_stop(ctx);
+      sq_stop(ctx);
       Shell_NotifyIcon(NIM_DELETE, &TrayIcon);
       PostQuitMessage(0);
       return 0;  // We've just sent our own quit message, with proper hwnd.
@@ -876,12 +876,12 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdline, int show) {
 #elif defined(USE_COCOA)
 #import <Cocoa/Cocoa.h>
 
-@interface Mongoose : NSObject<NSApplicationDelegate>
+@interface Squeasel : NSObject<NSApplicationDelegate>
 - (void) openBrowser;
 - (void) shutDown;
 @end
 
-@implementation Mongoose
+@implementation Squeasel
 - (void) openBrowser {
   [[NSWorkspace sharedWorkspace]
     openURL:[NSURL URLWithString:
@@ -900,13 +900,13 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdline, int show) {
 
 int main(int argc, char *argv[]) {
   init_server_name();
-  start_mongoose(argc, argv);
+  start_squeasel(argc, argv);
 
   [NSAutoreleasePool new];
   [NSApplication sharedApplication];
 
   // Add delegate to process menu item actions
-  Mongoose *myDelegate = [[Mongoose alloc] autorelease];
+  Squeasel *myDelegate = [[Squeasel alloc] autorelease];
   [NSApp setDelegate: myDelegate];
 
   // Run this app as agent
@@ -945,31 +945,31 @@ int main(int argc, char *argv[]) {
   id item = [[[NSStatusBar systemStatusBar]
     statusItemWithLength:NSVariableStatusItemLength] retain];
   [item setHighlightMode:YES];
-  [item setImage:[NSImage imageNamed:@"mongoose_22x22.png"]];
+  [item setImage:[NSImage imageNamed:@"squeasel_22x22.png"]];
   [item setMenu:menu];
 
   // Run the app
   [NSApp activateIgnoringOtherApps:YES];
   [NSApp run];
 
-  mg_stop(ctx);
+  sq_stop(ctx);
 
   return EXIT_SUCCESS;
 }
 #else
 int main(int argc, char *argv[]) {
   init_server_name();
-  start_mongoose(argc, argv);
+  start_squeasel(argc, argv);
   printf("%s started on port(s) %s with web root [%s]\n",
-         server_name, mg_get_option(ctx, "listening_ports"),
-         mg_get_option(ctx, "document_root"));
+         server_name, sq_get_option(ctx, "listening_ports"),
+         sq_get_option(ctx, "document_root"));
   while (exit_flag == 0) {
     sleep(1);
   }
   printf("Exiting on signal %d, waiting for all threads to finish...",
          exit_flag);
   fflush(stdout);
-  mg_stop(ctx);
+  sq_stop(ctx);
   printf("%s", " done.\n");
 
   return EXIT_SUCCESS;

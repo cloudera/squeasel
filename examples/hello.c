@@ -1,19 +1,19 @@
 #include <stdio.h>
 #include <string.h>
-#include "mongoose.h"
+#include "squeasel.h"
 
-// This function will be called by mongoose on every new request.
-static int begin_request_handler(struct mg_connection *conn) {
-  const struct mg_request_info *request_info = mg_get_request_info(conn);
+// This function will be called by squeasel on every new request.
+static int begin_request_handler(struct sq_connection *conn) {
+  const struct sq_request_info *request_info = sq_get_request_info(conn);
   char content[100];
 
   // Prepare the message we're going to send
   int content_length = snprintf(content, sizeof(content),
-                                "Hello from mongoose! Remote port: %d",
+                                "Hello from squeasel! Remote port: %d",
                                 request_info->remote_port);
 
   // Send HTTP reply to the client
-  mg_printf(conn,
+  sq_printf(conn,
             "HTTP/1.1 200 OK\r\n"
             "Content-Type: text/plain\r\n"
             "Content-Length: %d\r\n"        // Always set Content-Length
@@ -21,14 +21,14 @@ static int begin_request_handler(struct mg_connection *conn) {
             "%s",
             content_length, content);
 
-  // Returning non-zero tells mongoose that our function has replied to
-  // the client, and mongoose should not send client any more data.
+  // Returning non-zero tells squeasel that our function has replied to
+  // the client, and squeasel should not send client any more data.
   return 1;
 }
 
 int main(void) {
-  struct mg_context *ctx;
-  struct mg_callbacks callbacks;
+  struct sq_context *ctx;
+  struct sq_callbacks callbacks;
 
   // List of options. Last element must be NULL.
   const char *options[] = {"listening_ports", "8080", NULL};
@@ -38,14 +38,14 @@ int main(void) {
   callbacks.begin_request = begin_request_handler;
 
   // Start the web server.
-  ctx = mg_start(&callbacks, NULL, options);
+  ctx = sq_start(&callbacks, NULL, options);
 
   // Wait until user hits "enter". Server is running in separate thread.
   // Navigating to http://localhost:8080 will invoke begin_request_handler().
   getchar();
 
   // Stop the server.
-  mg_stop(ctx);
+  sq_stop(ctx);
 
   return 0;
 }

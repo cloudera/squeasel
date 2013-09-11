@@ -1,4 +1,4 @@
-// This file is part of Mongoose project, http://code.google.com/p/mongoose
+// This file is part of Squeasel project, http://code.google.com/p/squeasel
 
 var chat = {
   // Backend URL, string.

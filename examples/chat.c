@@ -1,4 +1,4 @@
-// This file is part of the Mongoose project, http://code.google.com/p/mongoose
+// This file is part of the Squeasel project, http://code.google.com/p/squeasel
 // It implements an online chat server. For more details,
 // see the documentation on the project web site.
 // To test the application,
@@ -13,7 +13,7 @@
 #include <stdarg.h>
 #include <pthread.h>
 
-#include "mongoose.h"
+#include "squeasel.h"
 
 #define MAX_USER_LEN  20
 #define MAX_MESSAGE_LEN  100
@@ -54,12 +54,12 @@ static long last_message_id;
 static pthread_rwlock_t rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
 // Get session object for the connection. Caller must hold the lock.
-static struct session *get_session(const struct mg_connection *conn) {
+static struct session *get_session(const struct sq_connection *conn) {
   int i;
-  const char *cookie = mg_get_header(conn, "Cookie");
+  const char *cookie = sq_get_header(conn, "Cookie");
   char session_id[33];
   time_t now = time(NULL);
-  mg_get_cookie(cookie, "session", session_id, sizeof(session_id));
+  sq_get_cookie(cookie, "session", session_id, sizeof(session_id));
   for (i = 0; i < MAX_SESSIONS; i++) {
     if (sessions[i].expire != 0 &&
         sessions[i].expire > now &&
@@ -70,10 +70,10 @@ static struct session *get_session(const struct mg_connection *conn) {
   return i == MAX_SESSIONS ? NULL : &sessions[i];
 }
 
-static void get_qsvar(const struct mg_request_info *request_info,
+static void get_qsvar(const struct sq_request_info *request_info,
                       const char *name, char *dst, size_t dst_len) {
   const char *qs = request_info->query_string;
-  mg_get_var(qs, strlen(qs == NULL ? "" : qs), name, dst, dst_len);
+  sq_get_var(qs, strlen(qs == NULL ? "" : qs), name, dst, dst_len);
 }
 
 // Get a get of messages with IDs greater than last_id and transform them
@@ -115,13 +115,13 @@ static char *messages_to_json(long last_id) {
 // If "callback" param is present in query string, this is JSONP call.
 // Return 1 in this case, or 0 if "callback" is not specified.
 // Wrap an output in Javascript function call.
-static int handle_jsonp(struct mg_connection *conn,
-                        const struct mg_request_info *request_info) {
+static int handle_jsonp(struct sq_connection *conn,
+                        const struct sq_request_info *request_info) {
   char cb[64];
 
   get_qsvar(request_info, "callback", cb, sizeof(cb));
   if (cb[0] != '\0') {
-    mg_printf(conn, "%s(", cb);
+    sq_printf(conn, "%s(", cb);
   }
 
   return cb[0] == '\0' ? 0 : 1;
@@ -129,22 +129,22 @@ static int handle_jsonp(struct mg_connection *conn,
 
 // A handler for the /ajax/get_messages endpoint.
 // Return a list of messages with ID greater than requested.
-static void ajax_get_messages(struct mg_connection *conn,
-                              const struct mg_request_info *request_info) {
+static void ajax_get_messages(struct sq_connection *conn,
+                              const struct sq_request_info *request_info) {
   char last_id[32], *json;
   int is_jsonp;
 
-  mg_printf(conn, "%s", ajax_reply_start);
+  sq_printf(conn, "%s", ajax_reply_start);
   is_jsonp = handle_jsonp(conn, request_info);
 
   get_qsvar(request_info, "last_id", last_id, sizeof(last_id));
   if ((json = messages_to_json(strtoul(last_id, NULL, 10))) != NULL) {
-    mg_printf(conn, "[%s]", json);
+    sq_printf(conn, "[%s]", json);
     free(json);
   }
 
   if (is_jsonp) {
-    mg_printf(conn, "%s", ")");
+    sq_printf(conn, "%s", ")");
   }
 }
 
@@ -163,14 +163,14 @@ static void my_strlcpy(char *dst, const char *src, size_t len) {
 }
 
 // A handler for the /ajax/send_message endpoint.
-static void ajax_send_message(struct mg_connection *conn,
-                              const struct mg_request_info *request_info) {
+static void ajax_send_message(struct sq_connection *conn,
+                              const struct sq_request_info *request_info) {
   struct message *message;
   struct session *session;
   char text[sizeof(message->text) - 1];
   int is_jsonp;
 
-  mg_printf(conn, "%s", ajax_reply_start);
+  sq_printf(conn, "%s", ajax_reply_start);
   is_jsonp = handle_jsonp(conn, request_info);
 
   get_qsvar(request_info, "text", text, sizeof(text));
@@ -187,18 +187,18 @@ static void ajax_send_message(struct mg_connection *conn,
     pthread_rwlock_unlock(&rwlock);
   }
 
-  mg_printf(conn, "%s", text[0] == '\0' ? "false" : "true");
+  sq_printf(conn, "%s", text[0] == '\0' ? "false" : "true");
 
   if (is_jsonp) {
-    mg_printf(conn, "%s", ")");
+    sq_printf(conn, "%s", ")");
   }
 }
 
 // Redirect user to the login form. In the cookie, store the original URL
 // we came from, so that after the authorization we could redirect back.
-static void redirect_to_login(struct mg_connection *conn,
-                              const struct mg_request_info *request_info) {
-  mg_printf(conn, "HTTP/1.1 302 Found\r\n"
+static void redirect_to_login(struct sq_connection *conn,
+                              const struct sq_request_info *request_info) {
+  sq_printf(conn, "HTTP/1.1 302 Found\r\n"
       "Set-Cookie: original_url=%s\r\n"
       "Location: %s\r\n\r\n",
       request_info->uri, login_url);
@@ -232,7 +232,7 @@ static struct session *new_session(void) {
 // This is why all communication must be SSL-ed.
 static void generate_session_id(char *buf, const char *random,
                                 const char *user) {
-  mg_md5(buf, random, user, NULL);
+  sq_md5(buf, random, user, NULL);
 }
 
 static void send_server_message(const char *fmt, ...) {
@@ -251,8 +251,8 @@ static void send_server_message(const char *fmt, ...) {
 
 // A handler for the /authorize endpoint.
 // Login page form sends user name and password to this endpoint.
-static void authorize(struct mg_connection *conn,
-                      const struct mg_request_info *request_info) {
+static void authorize(struct sq_connection *conn,
+                      const struct sq_request_info *request_info) {
   char user[MAX_USER_LEN], password[MAX_USER_LEN];
   struct session *session;
 
@@ -276,7 +276,7 @@ static void authorize(struct mg_connection *conn,
     snprintf(session->random, sizeof(session->random), "%d", rand());
     generate_session_id(session->session_id, session->random, session->user);
     send_server_message("<%s> joined", session->user);
-    mg_printf(conn, "HTTP/1.1 302 Found\r\n"
+    sq_printf(conn, "HTTP/1.1 302 Found\r\n"
         "Set-Cookie: session=%s; max-age=3600; http-only\r\n"  // Session ID
         "Set-Cookie: user=%s\r\n"  // Set user, needed by Javascript code
         "Set-Cookie: original_url=/; max-age=0\r\n"  // Delete original_url
@@ -289,8 +289,8 @@ static void authorize(struct mg_connection *conn,
 }
 
 // Return 1 if request is authorized, 0 otherwise.
-static int is_authorized(const struct mg_connection *conn,
-                         const struct mg_request_info *request_info) {
+static int is_authorized(const struct sq_connection *conn,
+                         const struct sq_request_info *request_info) {
   struct session *session;
   char valid_id[33];
   int authorized = 0;
@@ -314,20 +314,20 @@ static int is_authorized(const struct mg_connection *conn,
   return authorized;
 }
 
-static void redirect_to_ssl(struct mg_connection *conn,
-                            const struct mg_request_info *request_info) {
-  const char *p, *host = mg_get_header(conn, "Host");
+static void redirect_to_ssl(struct sq_connection *conn,
+                            const struct sq_request_info *request_info) {
+  const char *p, *host = sq_get_header(conn, "Host");
   if (host != NULL && (p = strchr(host, ':')) != NULL) {
-    mg_printf(conn, "HTTP/1.1 302 Found\r\n"
+    sq_printf(conn, "HTTP/1.1 302 Found\r\n"
               "Location: https://%.*s:8082/%s:8082\r\n\r\n",
               (int) (p - host), host, request_info->uri);
   } else {
-    mg_printf(conn, "%s", "HTTP/1.1 500 Error\r\n\r\nHost: header is not set");
+    sq_printf(conn, "%s", "HTTP/1.1 500 Error\r\n\r\nHost: header is not set");
   }
 }
 
-static int begin_request_handler(struct mg_connection *conn) {
-  const struct mg_request_info *request_info = mg_get_request_info(conn);
+static int begin_request_handler(struct sq_connection *conn) {
+  const struct sq_request_info *request_info = sq_get_request_info(conn);
   int processed = 1;
 
   if (!request_info->is_ssl) {
@@ -341,7 +341,7 @@ static int begin_request_handler(struct mg_connection *conn) {
   } else if (strcmp(request_info->uri, "/ajax/send_message") == 0) {
     ajax_send_message(conn, request_info);
   } else {
-    // No suitable handler found, mark as not processed. Mongoose will
+    // No suitable handler found, mark as not processed. Squeasel will
     // try to serve the request.
     processed = 0;
   }
@@ -357,26 +357,26 @@ static const char *options[] = {
 };
 
 int main(void) {
-  struct mg_callbacks callbacks;
-  struct mg_context *ctx;
+  struct sq_callbacks callbacks;
+  struct sq_context *ctx;
 
   // Initialize random number generator. It will be used later on for
   // the session identifier creation.
   srand((unsigned) time(0));
 
-  // Setup and start Mongoose
+  // Setup and start Squeasel
   memset(&callbacks, 0, sizeof(callbacks));
   callbacks.begin_request = begin_request_handler;
-  if ((ctx = mg_start(&callbacks, NULL, options)) == NULL) {
+  if ((ctx = sq_start(&callbacks, NULL, options)) == NULL) {
     printf("%s\n", "Cannot start chat server, fatal exit");
     exit(EXIT_FAILURE);
   }
 
   // Wait until enter is pressed, then exit
   printf("Chat server started on ports %s, press enter to quit.\n",
-         mg_get_option(ctx, "listening_ports"));
+         sq_get_option(ctx, "listening_ports"));
   getchar();
-  mg_stop(ctx);
+  sq_stop(ctx);
   printf("%s\n", "Chat server stopped.");
 
   return EXIT_SUCCESS;
