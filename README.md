@@ -11,6 +11,8 @@ If you are migrating from the original Mongoose project, you can define
 MONGOOSE_COMPATIBLE before including squeasel.h, and the original names
 of the APIs will continue to work.
 
+Windows support has been removed.
+
 # Project Mission
 
 Project mission is to provide easy to use, powerful, embeddable web server.
