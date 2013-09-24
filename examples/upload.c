@@ -1,4 +1,5 @@
-// Copyright (c) 2004-2012 Sergey Lyubka
+// Some portions Copyright (c) 2004-2012 Sergey Lyubka
+// Some portions Copyright (c) 2013 Cloudera Inc.
 // This file is a part of squeasel project, http://github.mtv.cloudera.com/CDH/squeasel
 
 #include <stdio.h>
