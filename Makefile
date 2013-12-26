@@ -109,7 +109,7 @@ squeasel.o: mod_lua.c
 # "-Wl,--as-needed" turned on by default  in cc command.
 # Also, this is turned in many other distros in static linkage builds.
 linux:
-	$(CC) squeasel.c main.c -o $(PROG) -ldl $(CFLAGS)
+	$(CC) squeasel.c main.c -o $(PROG) -ldl -lrt $(CFLAGS)
 
 mac: bsd
 bsd:
