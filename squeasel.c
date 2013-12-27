@@ -26,6 +26,7 @@
 #define __STDC_FORMAT_MACROS  // <inttypes.h> wants this for C++
 #define __STDC_LIMIT_MACROS   // C++ wants that for INT64_MAX
 
+#include <sys/prctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
@@ -4564,6 +4565,8 @@ static int consume_socket(struct sq_context *ctx, struct socket *sp) {
 }
 
 static void *worker_thread(void *thread_func_param) {
+  (void)prctl(PR_SET_NAME, "sq_worker");
+
   struct sq_context *ctx = (struct sq_context *) thread_func_param;
   struct sq_connection *conn;
 
@@ -4676,6 +4679,7 @@ static void accept_new_connection(const struct socket *listener,
 }
 
 static void *master_thread(void *thread_func_param) {
+  (void)prctl(PR_SET_NAME, "sq_acceptor");
   struct sq_context *ctx = (struct sq_context *) thread_func_param;
   struct pollfd *pfd;
   int i;
