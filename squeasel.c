@@ -2123,8 +2123,9 @@ static void print_dir_entry(struct de *de) {
                   "%.1fG", (double) de->file.size / 1073741824);
     }
   }
+  struct tm the_time;
   strftime(mod, sizeof(mod), "%d-%b-%Y %H:%M",
-           localtime(&de->file.modification_time));
+           localtime_r(&de->file.modification_time, &the_time));
   sq_url_encode(de->file_name, href, sizeof(href));
   de->conn->num_bytes_sent += sq_printf(de->conn,
       "<tr><td><a href=\"%s%s%s\">%s%s</a></td>"
@@ -4106,8 +4107,9 @@ static void log_access(const struct sq_connection *conn) {
   if (fp == NULL)
     return;
 
+  struct tm the_time;
   strftime(date, sizeof(date), "%d/%b/%Y:%H:%M:%S %z",
-           localtime(&conn->birth_time));
+           localtime_r(&conn->birth_time, &the_time));
 
   ri = &conn->request_info;
   flockfile(fp);
