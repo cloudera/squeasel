@@ -139,6 +139,10 @@ typedef int socklen_t;
 #define MGSQLEN 20
 #endif
 
+#define RETRY_ON_EINTR(ret, expr) do { \
+  ret = expr; \
+} while ((ret == -1) && (errno == EINTR));
+
 static const char *http_500_error = "Internal Server Error";
 
 #if defined(NO_SSL_DL)
@@ -965,7 +969,7 @@ static int64_t push(FILE *fp, SOCKET sock, SSL *ssl, const char *buf,
       if (ferror(fp))
         n = -1;
     } else {
-      n = send(sock, buf + sent, (size_t) k, MSG_NOSIGNAL);
+      RETRY_ON_EINTR(n, send(sock, buf + sent, (size_t) k, MSG_NOSIGNAL));
     }
 
     if (n <= 0)
@@ -986,13 +990,16 @@ static int pull(FILE *fp, struct sq_connection *conn, char *buf, int len) {
     // Use read() instead of fread(), because if we're reading from the CGI
     // pipe, fread() may block until IO buffer is filled up. We cannot afford
     // to block and must pass all read bytes immediately to the client.
-    nread = read(fileno(fp), buf, (size_t) len);
+    RETRY_ON_EINTR(nread, read(fileno(fp), buf, (size_t) len));
 #ifndef NO_SSL
   } else if (conn->ssl != NULL) {
     nread = SSL_read(conn->ssl, buf, len);
 #endif
   } else {
-    nread = recv(conn->client.sock, buf, (size_t) len, 0);
+    RETRY_ON_EINTR(nread, recv(conn->client.sock, buf, (size_t) len, 0));
+    if (nread == -1) {
+      cry(conn, "error reading: %s", strerror(errno));
+    }
   }
 
   return conn->ctx->stop_flag ? -1 : nread;
@@ -4827,7 +4834,7 @@ void sq_stop(struct sq_context *ctx) {
   ctx->stop_flag = 1;
 
   if (ctx->wakeup_fds[1] != -1) {
-    unused = write(ctx->wakeup_fds[1], &c, 1);
+    RETRY_ON_EINTR(unused, write(ctx->wakeup_fds[1], &c, 1));
   }
 
   // Wait until sq_fini() stops
