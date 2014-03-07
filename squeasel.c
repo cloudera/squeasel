@@ -279,6 +279,14 @@ struct socket {
   unsigned ssl_redir:1; // Is port supposed to redirect everything to SSL port
 };
 
+char* SAFE_HTTP_METHODS[] = {
+  "GET", "POST", "HEAD", "PROPFIND", "MKCOL" };
+
+// See https://www.owasp.org/index.php/Test_HTTP_Methods_(OTG-CONFIG-006) for details.
+#ifdef ALLOW_UNSAFE_HTTP_METHODS
+char* UNSAFE_HTTP_METHODS[] = { "DELETE" , "CONNECT", "PUT" };
+#endif
+
 // NOTE(lsm): this enum shoulds be in sync with the config_options below.
 enum {
   CGI_EXTENSIONS, CGI_ENVIRONMENT, PUT_DELETE_PASSWORDS_FILE, CGI_INTERPRETER,
@@ -2513,12 +2521,17 @@ static void parse_http_headers(char **buf, struct sq_request_info *ri) {
 }
 
 static int is_valid_http_method(const char *method) {
-  return !strcmp(method, "GET") || !strcmp(method, "POST") ||
-    !strcmp(method, "HEAD") || !strcmp(method, "CONNECT") ||
-    !strcmp(method, "PUT") || !strcmp(method, "DELETE") ||
-    !strcmp(method, "OPTIONS") || !strcmp(method, "PROPFIND")
-    || !strcmp(method, "MKCOL")
-          ;
+  for (unsigned int i = 0; i < sizeof(SAFE_HTTP_METHODS) / sizeof(char*); ++i) {
+    if (!strcmp(method, SAFE_HTTP_METHODS[i])) return 1;
+  }
+
+#ifdef ALLOW_UNSAFE_HTTP_METHODS
+  for (unsigned int i = 0; i < sizeof(UNSAFE_HTTP_METHODS) / sizeof(char*); ++i) {
+    if (!strcmp(method, UNSAFE_HTTP_METHODS[i])) return 1;
+  }
+#endif
+
+  return 0;
 }
 
 // Parse HTTP request, fill in sq_request_info structure.
