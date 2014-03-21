@@ -4799,21 +4799,18 @@ static void *master_thread(void *thread_func_param) {
   }
   (void) pthread_mutex_unlock(&ctx->mutex);
 
-  // All threads exited, no sync is needed. Destroy mutex and condvars
-  (void) pthread_mutex_destroy(&ctx->mutex);
-  (void) pthread_cond_destroy(&ctx->cond);
-  (void) pthread_cond_destroy(&ctx->sq_empty);
-  (void) pthread_cond_destroy(&ctx->sq_full);
-
 #if !defined(NO_SSL)
   uninitialize_ssl(ctx);
 #endif
   DEBUG_TRACE(("exiting"));
 
   // Signal sq_stop() that we're done.
-  // WARNING: This must be the very last thing this
-  // thread does, as ctx becomes invalid after this line.
+  (void) pthread_mutex_lock(&ctx->mutex);
   ctx->stop_flag = 2;
+  // WARNING: This must be the very last thing this
+  // thread does, as ctx may be freed by sq_stop() as soon as the
+  // mutex is unlocked.
+  (void) pthread_mutex_unlock(&ctx->mutex);
   return NULL;
 }
 
@@ -4837,6 +4834,12 @@ static void free_context(struct sq_context *ctx) {
   }
 #endif // !NO_SSL
 
+  // All threads exited, no sync is needed. Destroy mutex and condvars
+  (void) pthread_cond_destroy(&ctx->cond);
+  (void) pthread_cond_destroy(&ctx->sq_empty);
+  (void) pthread_cond_destroy(&ctx->sq_full);
+  (void) pthread_mutex_destroy(&ctx->mutex);
+
   // Deallocate context itself
   free(ctx);
 }
@@ -4844,16 +4847,24 @@ static void free_context(struct sq_context *ctx) {
 void sq_stop(struct sq_context *ctx) {
   int unused;
   char c = 0;
+
+  (void) pthread_mutex_lock(&ctx->mutex);
   ctx->stop_flag = 1;
+  (void) pthread_mutex_unlock(&ctx->mutex);
 
   if (ctx->wakeup_fds[1] != -1) {
     RETRY_ON_EINTR(unused, write(ctx->wakeup_fds[1], &c, 1));
   }
 
   // Wait until sq_fini() stops
-  while (ctx->stop_flag != 2) {
+  while (1) {
+    (void) pthread_mutex_lock(&ctx->mutex);
+    int should_stop = (ctx->stop_flag == 2);
+    (void) pthread_mutex_unlock(&ctx->mutex);
+    if (should_stop) break;
     (void) sq_sleep(10);
   }
+
   free_context(ctx);
 }
 
