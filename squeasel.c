@@ -4785,10 +4785,6 @@ static void *master_thread(void *thread_func_param) {
   // Stop signal received: somebody called sq_stop. Quit.
   close_all_listening_sockets(ctx);
 
-  // Close the wakeup fds
-  close(ctx->wakeup_fds[0]);
-  close(ctx->wakeup_fds[1]);
-
   // Wakeup workers that are waiting for connections to handle.
   pthread_cond_broadcast(&ctx->sq_full);
 
@@ -4833,6 +4829,16 @@ static void free_context(struct sq_context *ctx) {
     ssl_mutexes = NULL;
   }
 #endif // !NO_SSL
+
+  // If the wakeup fds are open, close them
+  if (ctx->wakeup_fds[0] >= 0) {
+    close(ctx->wakeup_fds[0]);
+    ctx->wakeup_fds[0] = -1;
+  }
+  if (ctx->wakeup_fds[1] >= 0) {
+    close(ctx->wakeup_fds[1]);
+    ctx->wakeup_fds[1] = -1;
+  }
 
   // All threads exited, no sync is needed. Destroy mutex and condvars
   (void) pthread_cond_destroy(&ctx->cond);
@@ -4882,6 +4888,8 @@ struct sq_context *sq_start(const struct sq_callbacks *callbacks,
   }
   ctx->callbacks = *callbacks;
   ctx->user_data = user_data;
+  ctx->wakeup_fds[0] = -1;
+  ctx->wakeup_fds[1] = -1;
 
   while (options && (name = *options++) != NULL) {
     if ((i = get_option_index(name)) == -1) {
