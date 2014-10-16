@@ -4163,6 +4163,8 @@ static int set_ssl_option(struct sq_context *ctx) {
     return 0;
   }
 
+  SSL_CTX_set_options(ctx->ssl_ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+
   // If user callback returned non-NULL, that means that user callback has
   // set up certificate itself. In this case, skip sertificate setting.
   if ((ctx->callbacks.init_ssl == NULL ||
