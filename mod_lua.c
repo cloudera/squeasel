@@ -146,7 +146,7 @@ static void lsp_abort(lua_State *L) {
 static int lsp(struct sq_connection *conn, const char *path,
                const char *p, int64_t len, lua_State *L) {
   int i, j, pos = 0, lines = 1, lualines = 0;
-  char chunkname[MG_BUF_LEN];
+  char chunkname[SQ_BUF_LEN];
 
   for (i = 0; i < len; i++) {
     if (p[i] == '\n') lines++;
@@ -269,7 +269,7 @@ static void prepare_lua_environment(struct sq_connection *conn, lua_State *L) {
   reg_function(L, "cry", lsp_cry, conn);
   reg_function(L, "include", lsp_include, conn);
   reg_function(L, "redirect", lsp_redirect, conn);
-  reg_string(L, "version", MONGOOSE_VERSION);
+  reg_string(L, "version", SQUEASEL_VERSION);
 
   // Export request_info
   lua_pushstring(L, "request_info");
@@ -343,7 +343,7 @@ void sq_exec_lua_script(struct sq_connection *conn, const char *path,
 
 static void lsp_send_err(struct sq_connection *conn, struct lua_State *L,
                          const char *fmt, ...) {
-  char buf[MG_BUF_LEN];
+  char buf[SQ_BUF_LEN];
   va_list ap;
   int len;
 

@@ -90,7 +90,7 @@ typedef int SOCKET;
 
 #include "squeasel.h"
 
-#define MONGOOSE_VERSION "3.9"
+#define SQUEASEL_VERSION "3.9"
 #define PASSWORDS_FILE_NAME ".htpasswd"
 #define CGI_ENVIRONMENT_SIZE 4096
 #define MAX_CGI_ENVIR_VARS 64
@@ -421,7 +421,7 @@ static struct sq_connection *fc(const struct sq_context *ctx) {
 }
 
 const char *sq_version(void) {
-  return MONGOOSE_VERSION;
+  return SQUEASEL_VERSION;
 }
 
 struct sq_request_info *sq_get_request_info(struct sq_connection *conn) {

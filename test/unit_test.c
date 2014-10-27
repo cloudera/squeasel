@@ -601,7 +601,7 @@ static void test_skip_quoted(void) {
 }
 
 static void test_alloc_vprintf(void) {
-  char buf[MG_BUF_LEN], *p = buf;
+  char buf[SQ_BUF_LEN], *p = buf;
 
   ASSERT(alloc_printf(&p, sizeof(buf), "%s", "hi") == 2);
   ASSERT(p == buf);
