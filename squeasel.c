@@ -26,7 +26,10 @@
 #define __STDC_FORMAT_MACROS  // <inttypes.h> wants this for C++
 #define __STDC_LIMIT_MACROS   // C++ wants that for INT64_MAX
 
+#ifdef __linux__
 #include <sys/prctl.h>
+#endif  // defined(__linux__)
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
@@ -34,6 +37,11 @@
 #include <fcntl.h>
 
 #include <time.h>
+#ifdef __MACH__
+#include <mach/clock.h>
+#include <mach/mach.h>
+#endif
+
 #include <stdlib.h>
 #include <stdarg.h>
 #include <assert.h>
@@ -4442,10 +4450,19 @@ static int consume_socket(struct sq_context *ctx, struct socket *sp) {
   // we'll stop waiting and shut down the thread.
   while (ctx->sq_head == ctx->sq_tail && ctx->stop_flag == 0) {
     struct timespec timeout;
+#ifdef __linux__
     if (clock_gettime(CLOCK_MONOTONIC, &timeout) != 0) {
       perror("Unable to get CLOCK_MONOTONIC");
       abort(); // CLOCK_MONOTONIC should always be supported
     }
+#elif defined(__MACH__)
+    clock_serv_t cclock;
+    mach_timespec_t mts;
+    host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+    clock_get_time(cclock, &mts);
+    mach_port_deallocate(mach_task_self(), cclock);
+    timeout.tv_sec = mts.tv_sec;
+#endif
 
     ctx->num_free_threads++;
     assert(ctx->num_free_threads <= ctx->num_threads);
@@ -4484,7 +4501,11 @@ static int consume_socket(struct sq_context *ctx, struct socket *sp) {
 }
 
 static void *worker_thread(void *thread_func_param) {
+#ifdef __linux__
   (void)prctl(PR_SET_NAME, "sq_worker");
+#elif defined(__MACH__)
+  pthread_setname_np("sq_worker");
+#endif
 
   struct sq_context *ctx = (struct sq_context *) thread_func_param;
   struct sq_connection *conn;
@@ -4620,7 +4641,12 @@ static void accept_new_connection(const struct socket *listener,
 }
 
 static void *master_thread(void *thread_func_param) {
+#ifdef __linux__
   (void)prctl(PR_SET_NAME, "sq_acceptor");
+#elif defined(__MACH__)
+  pthread_setname_np("sq_acceptor");
+#endif
+
   struct sq_context *ctx = (struct sq_context *) thread_func_param;
   struct pollfd *pfd;
   int i;
@@ -4815,11 +4841,14 @@ struct sq_context *sq_start(const struct sq_callbacks *callbacks,
   pthread_condattr_t attr;
 
   pthread_condattr_init(&attr);
+
+#ifdef __linux__
   if (pthread_condattr_setclock(&attr, CLOCK_MONOTONIC) != 0) {
     perror("pthread_condattr_setclock");
     free_context(ctx);
     return NULL;
   }
+#endif
 
   (void) pthread_cond_init(&ctx->cond, &attr);
   (void) pthread_cond_init(&ctx->sq_empty, &attr);
