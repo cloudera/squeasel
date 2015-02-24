@@ -2037,6 +2037,23 @@ void sq_url_encode(const char *src, char *dst, size_t dst_len) {
   *dst = '\0';
 }
 
+// One simple rule: Strip everything between < and >
+static void sq_strip_tags(const char *src, char *dst, size_t dst_len) {
+  const char *end = dst + dst_len + 1;
+  char tag = 0;
+  for(; *src != '\0' && dst < end; src++) {
+    if (*src == '<') {
+      tag = 1;
+    } else if (*src == '>') {
+      tag = 0;
+    } else if (tag == 0) {
+      *dst++ = *src;
+    }
+  }
+  *dst = '\0';
+}
+
+
 static void print_dir_entry(struct de *de) {
   char size[64], mod[64], href[PATH_MAX];
 
@@ -4399,7 +4416,10 @@ static void process_new_connection(struct sq_connection *conn) {
       send_http_error(conn, 500, "Server Error", "%s", ebuf);
       conn->must_close = 1;
     } else if (!is_valid_uri(conn->request_info.uri)) {
-      snprintf(ebuf, sizeof(ebuf), "Invalid URI: [%s]", ri->uri);
+      char* encoded = (char*) malloc(SQ_BUF_LEN);
+      sq_strip_tags(ri->uri, encoded, SQ_BUF_LEN);
+      snprintf(ebuf, sizeof(ebuf), "Invalid URI: [%s]", encoded);
+      free(encoded);
       send_http_error(conn, 400, "Bad Request", "%s", ebuf);
     } else if (strcmp(ri->http_version, "1.0") &&
                strcmp(ri->http_version, "1.1")) {

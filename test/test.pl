@@ -227,6 +227,9 @@ o("GET /...leading.dot.txt HTTP/1.0\n\n", 'abc123', 'Leading dot 2');
 o("GET /../\\\\/.//...leading.dot.txt HTTP/1.0\n\n", 'abc123', 'Leading dot 3')
   if on_windows();
 o("GET .. HTTP/1.0\n\n", '400 Bad Request', 'Leading dot 4', 0);
+o("GET <script>Test</script>abc\"  HTTP/1.0\n\n",
+  'Invalid URI: \[Testabc"\]',
+  "Safely encode URI", 0);
 
 mkdir $test_dir unless -d $test_dir;
 o("GET /$test_dir_uri/not_exist HTTP/1.0\n\n",
