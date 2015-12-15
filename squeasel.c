@@ -4501,6 +4501,7 @@ static int consume_socket(struct sq_context *ctx, struct socket *sp) {
     clock_get_time(cclock, &mts);
     mach_port_deallocate(mach_task_self(), cclock);
     timeout.tv_sec = mts.tv_sec;
+    timeout.tv_nsec = (long) mts.tv_nsec;
 #endif
 
     ctx->num_free_threads++;
