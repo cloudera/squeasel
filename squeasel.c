@@ -168,6 +168,14 @@ struct ssl_func {
   void  (*ptr)(void); // Function pointer
 };
 
+// These constants and type signatures are copied from openssl/ssl.h.
+#define SSL_OP_NO_SSLv2 0x01000000L
+#define SSL_OP_NO_SSLv3 0x02000000L
+#define SSL_CTRL_OPTIONS 32
+
+typedef int pem_password_cb(char *buf, int size,
+                            int rwflag, void *userdata);
+
 #define SSL_free (* (void (*)(SSL *)) ssl_sw[0].ptr)
 #define SSL_accept (* (int (*)(SSL *)) ssl_sw[1].ptr)
 #define SSL_connect (* (int (*)(SSL *)) ssl_sw[2].ptr)
@@ -184,7 +192,7 @@ struct ssl_func {
 #define SSL_CTX_use_certificate_file (* (int (*)(SSL_CTX *, \
         const char *, int)) ssl_sw[12].ptr)
 #define SSL_CTX_set_default_passwd_cb \
-  (* (void (*)(SSL_CTX *, sq_callback_t)) ssl_sw[13].ptr)
+  (* (void (*)(SSL_CTX *, pem_password_cb *)) ssl_sw[13].ptr)
 #define SSL_CTX_free (* (void (*)(SSL_CTX *)) ssl_sw[14].ptr)
 #define SSL_load_error_strings (* (void (*)(void)) ssl_sw[15].ptr)
 #define SSL_CTX_use_certificate_chain_file \
@@ -193,6 +201,11 @@ struct ssl_func {
 #define SSL_pending (* (int (*)(SSL *)) ssl_sw[18].ptr)
 #define SSL_CTX_set_verify (* (void (*)(SSL_CTX *, int, int)) ssl_sw[19].ptr)
 #define SSL_shutdown (* (int (*)(SSL *)) ssl_sw[20].ptr)
+#define SSL_CTX_set_default_passwd_cb_userdata \
+  (* (void (*)(SSL_CTX *, void *)) ssl_sw[21].ptr)
+#define SSL_CTX_ctrl (* (int (*)(SSL_CTX *, int, int, void *)) ssl_sw[22].ptr)
+#define SSL_CTX_set_options(ctx,op) \
+  SSL_CTX_ctrl((ctx), SSL_CTRL_OPTIONS, (op), NULL)
 
 #define CRYPTO_num_locks (* (int (*)(void)) crypto_sw[0].ptr)
 #define CRYPTO_set_locking_callback \
@@ -228,6 +241,8 @@ static struct ssl_func ssl_sw[] = {
   {"SSL_pending", NULL},
   {"SSL_CTX_set_verify", NULL},
   {"SSL_shutdown",   NULL},
+  {"SSL_CTX_set_default_passwd_cb_userdata", NULL},
+  {"SSL_CTX_ctrl", NULL},
   {NULL,    NULL}
 };
 
