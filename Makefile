@@ -1,5 +1,5 @@
 # This Makefile is part of Squeasel web server project,
-# https://github.mtv.cloudera.com/CDH/squeasel
+# https://github.com/cloudera/squeasel
 #
 # Example custom build:
 # COPT="-g -O0 -DNO_SSL_DL -DUSE_LUA -llua -lcrypto -lssl" make linux

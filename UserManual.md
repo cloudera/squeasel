@@ -258,7 +258,7 @@ directory is commonly referenced as dot (`.`).
 Path to SSL certificate file. This option is only required when at least one
 of the `listening_ports` is SSL. The file must be in PEM format,
 and it must have both private key and certificate, see for example
-[ssl_cert.pem](https://github.mtv.cloudera.com/CDH/squeasel/blob/master/build/ssl_cert.pem)
+[ssl_cert.pem](https://github.com/cloudera/squeasel/blob/master/build/ssl_cert.pem)
 
 ### num_threads `50`
 Number of worker threads. Squeasel handles each incoming connection in a
@@ -332,10 +332,10 @@ are accessible from the Lua code (please check reference manual for details),
 and also information about the request is available in `mg.request_info` object,
 like request method, all headers, etcetera. Please refer to
 `struct sq_request_info` definition in
-[squeasel.h](https://github.mtv.cloudera.com/CDH/squeasel/blob/master/squeasel.h)
+[squeasel.h](https://github.com/cloudera/squeasel/blob/master/squeasel.h)
 to see what kind of information is present in `mg.request_info` object. Also,
-[page.lp](https://github.mtv.cloudera.com/CDH/squeasel/blob/master/test/page.lp) and
-[prime_numbers.lp](https://github.mtv.cloudera.com/CDH/squeasel/blob/master/examples/lua/prime_numbers.lp)
+[page.lp](https://github.com/cloudera/squeasel/blob/master/test/page.lp) and
+[prime_numbers.lp](https://github.com/cloudera/squeasel/blob/master/examples/lua/prime_numbers.lp)
 contains some example code that uses `request_info` and other functions(form submitting for example).
 
 Squeasel exports the following to the Lua server page:
@@ -398,8 +398,8 @@ variable is visible in the block that follows.
 
 # Embedding
 Embedding Squeasel is easy. Copy
-[squeasel.c](https://github.mtv.cloudera.com/CDH/squeasel/blob/master/squeasel.c) and
-[squeasel.h](https://github.mtv.cloudera.com/CDH/squeasel/blob/master/squeasel.h)
+[squeasel.c](https://github.com/cloudera/squeasel/blob/master/squeasel.c) and
+[squeasel.h](https://github.com/cloudera/squeasel/blob/master/squeasel.h)
 to your application's source tree and include them in the build. For
 example, your application's code lives in C file `my_app.c`, then on UNIX
 this command embeds Squeasel:
@@ -425,7 +425,7 @@ To start the embedded web server, call `sq_start()`. To stop it, call
 
     // This structure needs to be passed to sq_start(), to let squeasel know
     // which callbacks to invoke. For detailed description, see
-    // https://github.mtv.cloudera.com/CDH/squeasel/blob/master/UserManual.md
+    // https://github.com/cloudera/squeasel/blob/master/UserManual.md
     struct sq_callbacks {
       int  (*begin_request)(struct sq_connection *);
       void (*end_request)(const struct sq_connection *, int reply_status_code);
@@ -441,12 +441,12 @@ To start the embedded web server, call `sq_start()`. To stop it, call
       int  (*http_error)(struct sq_connection *, int status);
     };
 
-[hello.c](https://github.mtv.cloudera.com/CDH/squeasel/blob/master/examples/hello.c)
+[hello.c](https://github.com/cloudera/squeasel/blob/master/examples/hello.c)
 provides a minimalistic example.
 
 Common pattern is to implement `begin_request` callback, and serve static files
 from memory, and/or construct dynamic replies on the fly. Here is
-my [embed.c](https://gist.github.mtv.cloudera.com/CDH/4714740) gist
+my [embed.c](https://gist.github.com/cloudera/4714740) gist
 that shows how to easily any data can be embedded
 directly into the executable. If such data needs to be encrypted, then
 encrypted database or encryption dongles would be a better choice.
@@ -502,7 +502,7 @@ limit on number of simultaneous requests that can be handled by squeasel.
 
 When master thread accepts new connection, a new accepted socket (described by
 `struct socket`) it placed into the accepted sockets queue,
-which has size of 20 (see [code](https://github.mtv.cloudera.com/CDH/squeasel/blob/3892e0199e6ca9613b160535d9d107ede09daa43/squeasel.c#L486)). Any idle worker thread
+which has size of 20 (see [code](https://github.com/cloudera/squeasel/blob/3892e0199e6ca9613b160535d9d107ede09daa43/squeasel.c#L486)). Any idle worker thread
 can grab accepted sockets from that queue. If all worker threads are busy,
 master thread can accept and queue up to 20 more TCP connections,
 filling up the queue.

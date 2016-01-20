@@ -26,23 +26,23 @@ simplicity by carefully selected list of features:
   [MIT license](http://en.wikipedia.org/wiki/MIT_License)
 - Works on Windows, Mac, UNIX, iPhone, Android, and many other platforms
 - Scripting and database support (Lua Server Pages + Sqlite, see
-  [page.lp](https://github.mtv.cloudera.com/CDH/squeasel/blob/master/test/page.lp) ),
+  [page.lp](https://github.com/cloudera/squeasel/blob/master/test/page.lp) ),
   which provides ready to go, powerful web development platform in
   one single-click executable with **no dependencies**: forget LAMP!
 - Support for CGI, SSL, SSI, Digest (MD5) authorization, Websocket, WEbDAV
 - Resumed download, URL rewrite, file blacklist, IP-based ACL, Windows service
 - Download speed limit based on client subnet or URI pattern
 - Simple and clean embedding API,
-  [squeasel.h](https://github.mtv.cloudera.com/CDH/squeasel/blob/master/squeasel.h).
+  [squeasel.h](https://github.com/cloudera/squeasel/blob/master/squeasel.h).
   The source is in single
-  [squeasel.c](https://github.mtv.cloudera.com/CDH/squeasel/blob/master/squeasel.c) file
+  [squeasel.c](https://github.com/cloudera/squeasel/blob/master/squeasel.c) file
   to make things easy. Embedding examples:
-  [hello.c](https://github.mtv.cloudera.com/CDH/squeasel/blob/master/examples/hello.c),
-  [post.c](https://github.mtv.cloudera.com/CDH/squeasel/blob/master/examples/post.c),
-  [upload.c](https://github.mtv.cloudera.com/CDH/squeasel/blob/master/examples/upload.c),
-  [websocket.c](https://github.mtv.cloudera.com/CDH/squeasel/blob/master/examples/websocket.c)
+  [hello.c](https://github.com/cloudera/squeasel/blob/master/examples/hello.c),
+  [post.c](https://github.com/cloudera/squeasel/blob/master/examples/post.c),
+  [upload.c](https://github.com/cloudera/squeasel/blob/master/examples/upload.c),
+  [websocket.c](https://github.com/cloudera/squeasel/blob/master/examples/websocket.c)
 - HTTP client capable of sending arbitrary HTTP/HTTPS requests
-- [User Manual](https://github.mtv.cloudera.com/CDH/squeasel/blob/master/UserManual.md)
+- [User Manual](https://github.com/cloudera/squeasel/blob/master/UserManual.md)
 
 Note that Windows and MacOS binaries have following 3rd party software
 compiled in:
