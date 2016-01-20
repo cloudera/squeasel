@@ -68,17 +68,6 @@
 #include <dlfcn.h>
 #endif
 #include <pthread.h>
-#if defined(__MACH__)
-#define SSL_LIB   "libssl.dylib"
-#define CRYPTO_LIB  "libcrypto.dylib"
-#else
-#if !defined(SSL_LIB)
-#define SSL_LIB   "libssl.so"
-#endif
-#if !defined(CRYPTO_LIB)
-#define CRYPTO_LIB  "libcrypto.so"
-#endif
-#endif
 #ifndef O_BINARY
 #define O_BINARY  0
 #endif // O_BINARY
@@ -158,6 +147,50 @@ static const char *http_500_error = "Internal Server Error";
 #include <openssl/err.h>
 #else
 // SSL loaded dynamically from DLL.
+
+// Platform-specific dynamic library names. Platforms are inconsistent about
+// OpenSSL dynamic library versioning, so multiple fallbacks are necessary to
+// cover all possibilities.
+
+#define STRINGIFY2(X) #X
+#define STRINGIFY(X) STRINGIFY2(X)
+
+#if defined(SSL_LIB)
+const char* ssl_dylibs[] = { STRINGIFY(SSL_LIB) , NULL };
+#elif defined(__MACH__)
+const char* ssl_dylibs[] = {
+  "libssl.1.0.0.dylib", // Homebrew
+  "libssl.0.9.8.dylib", // OS X system OpenSSL
+  "libssl.dylib",       // fallback
+  NULL
+};
+#else
+const char* ssl_dylibs[] = {
+  "libssl.so.10",     // Centos 6 system OpenSSL
+  "libssl.so.1.0.0",  // Ubuntu system OpenSSL
+  "libssl.so",        // fallback
+  NULL
+};
+#endif
+
+#if defined(CRYPTO_LIB)
+const char* crypto_dylibs[] = { STRINGIFY(CRYPTO_LIB), NULL };
+#elif defined(__MACH__)
+const char* crypto_dylibs[] = {
+  "libcrypto.1.0.0.dylib",
+  "libcrypto.0.9.8.dylib",
+  "libcryto.dylib",
+  NULL
+};
+#else
+const char* crypto_dylibs[] = {
+  "libcrypto.so.10",
+  "libcrypto.so.1.0.0",
+  "libcryto.so",
+  NULL
+};
+#endif
+
 // I put the prototypes here to be independent from OpenSSL source installation.
 typedef struct ssl_st SSL;
 typedef struct ssl_method_st SSL_METHOD;
@@ -4287,14 +4320,20 @@ static int ssl_password_callback(char *password, int size, int unused, void *dat
 }
 
 #if !defined(NO_SSL_DL)
-static int load_dll(struct sq_context *ctx, const char *dll_name,
-                    struct ssl_func *sw) {
+static int load_dll(struct sq_context *ctx, const char* dll_names[], struct ssl_func *sw) {
   union {void *p; void (*fp)(void);} u;
   void  *dll_handle;
   struct ssl_func *fp;
+  int dll_names_idx;
 
-  if ((dll_handle = dlopen(dll_name, RTLD_LAZY)) == NULL) {
-    cry(fc(ctx), "%s: cannot load %s", __func__, dll_name);
+  assert(dll_names[0] != NULL);
+  for (dll_names_idx = 0; dll_names[dll_names_idx] != NULL; dll_names_idx++) {
+    if ((dll_handle = dlopen(dll_names[dll_names_idx], RTLD_LAZY)) != NULL) {
+      break;
+    }
+  }
+  if (dll_handle == NULL) {
+    cry(fc(ctx), "%s: cannot load %s", __func__, dll_names[0]);
     return 0;
   }
 
@@ -4303,7 +4342,7 @@ static int load_dll(struct sq_context *ctx, const char *dll_name,
     // function pointers. We need to use a union to make a cast.
     u.p = dlsym(dll_handle, fp->name);
     if (u.fp == NULL) {
-      cry(fc(ctx), "%s: %s: cannot find %s", __func__, dll_name, fp->name);
+      cry(fc(ctx), "%s: %s: cannot find %s", __func__, dll_names[dll_names_idx], fp->name);
       return 0;
     } else {
       fp->ptr = u.fp;
@@ -4330,8 +4369,8 @@ static int set_ssl_option(struct sq_context *ctx) {
   if (private_key == NULL) private_key = pem;
 
 #if !defined(NO_SSL_DL)
-  if (!load_dll(ctx, SSL_LIB, ssl_sw) ||
-      !load_dll(ctx, CRYPTO_LIB, crypto_sw)) {
+  if (!load_dll(ctx, ssl_dylibs, ssl_sw) ||
+      !load_dll(ctx, crypto_dylibs, crypto_sw)) {
     return 0;
   }
 #endif // NO_SSL_DL
