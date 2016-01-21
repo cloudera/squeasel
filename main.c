@@ -122,7 +122,7 @@ static void show_usage_and_exit(void) {
 static const char *config_file_top_comment =
 "# Squeasel web server configuration file.\n"
 "# For detailed description of every option, visit\n"
-"# https://github.mtv.cloudera.com/CDH/squeasel/blob/master/UserManual.md\n"
+"# https://github.com/cloudera/squeasel/blob/master/UserManual.md\n"
 "# Lines starting with '#' and empty lines are ignored.\n"
 "# To make a change, remove leading '#', modify option's value,\n"
 "# save this file and then restart Squeasel.\n\n";
@@ -358,7 +358,7 @@ static void start_squeasel(int argc, char *argv[]) {
   process_command_line_arguments(argv, options);
 
   // Make sure we have absolute paths for files and directories
-  // https://github.mtv.cloudera.com/CDH/squeasel/issues/181
+  // https://github.com/cloudera/squeasel/issues/181
   set_absolute_path(options, "document_root", argv[0]);
   set_absolute_path(options, "put_delete_auth_file", argv[0]);
   set_absolute_path(options, "cgi_interpreter", argv[0]);
