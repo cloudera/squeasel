@@ -52,9 +52,7 @@
 #include <stdio.h>
 
 #include <sys/wait.h>
-#include <sys/socket.h>
 #include <sys/poll.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/time.h>
 #include <stdint.h>
@@ -295,16 +293,6 @@ static struct ssl_func crypto_sw[] = {
 static const char *month_names[] = {
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-};
-
-// Unified socket address. For IPv6 support, add IPv6 address structure
-// in the union u.
-union usa {
-  struct sockaddr sa;
-  struct sockaddr_in sin;
-#if defined(USE_IPV6)
-  struct sockaddr_in6 sin6;
-#endif
 };
 
 // Describes a string (chunk of memory).
@@ -968,13 +956,13 @@ static int set_non_blocking_mode(SOCKET sock) {
   return 0;
 }
 
-int sq_get_bound_addresses(const struct sq_context *ctx, struct sockaddr_in ***addrs,
+int sq_get_bound_uaddresses(const struct sq_context *ctx, union usa ***addrs,
                            int *num_addrs) {
   int n = ctx->num_listening_sockets;
   int rc = 1;
   int i;
 
-  struct sockaddr_in **addr_array = calloc(n, sizeof(struct sockaddr_in *));
+  union usa **addr_array = calloc(n, sizeof(union usa *));
   if (addr_array == NULL) {
     cry(fc(ctx), "%s: cannot allocate memory", __func__);
     goto cleanup;
@@ -988,7 +976,7 @@ int sq_get_bound_addresses(const struct sq_context *ctx, struct sockaddr_in ***a
       goto cleanup;
     }
 
-    socklen_t len = sizeof(struct sockaddr_in *);
+    socklen_t len = sizeof(union usa *);
     if (getsockname(ctx->listening_sockets[i].sock, (struct sockaddr*)addr_array[i],
                     &len) != 0) {
       cry(fc(ctx), "%s: cannot get socket name: %s", __func__, strerror(errno));
@@ -998,6 +986,37 @@ int sq_get_bound_addresses(const struct sq_context *ctx, struct sockaddr_in ***a
 
   *num_addrs = n;
 
+  return 0;
+
+  cleanup:
+  if (addr_array) {
+    for (i = 0; i < n; i++) {
+      free(addr_array[i]);
+    }
+    free(addr_array);
+  }
+  return rc;
+}
+
+int sq_get_bound_addresses(const struct sq_context *ctx, struct sockaddr_in ***addrs,
+                           int *num_addrs) {
+  int rc = 1;
+  int n = ctx->num_listening_sockets;
+  struct sockaddr_in **addr_array = calloc(n, sizeof(struct sockaddr_in *));
+  if (addr_array == NULL) {
+    cry(fc(ctx), "%s: cannot allocate memory", __func__);
+    goto cleanup;
+  }
+  union usa **u;
+  int num_uaddrs;
+  rc = sq_get_bound_uaddresses(ctx, &u, &num_uaddrs);
+
+  int i;
+  for (i = 0; i < n; i++) {
+    (**addrs)[i] = (*u)[i].sin;
+  }
+  *addrs = addr_array;
+  *num_addrs = num_uaddrs;
   return 0;
 
   cleanup:

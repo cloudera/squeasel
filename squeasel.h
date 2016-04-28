@@ -24,6 +24,8 @@
 
 #include <stdio.h>
 #include <stddef.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 // Define this when compiling to add shims for Mongoose APIs to the
 // renamed squeasel APIs
@@ -67,6 +69,7 @@ struct sq_context;     // Handle for the HTTP service itself
 struct sq_connection;  // Handle for the individual connection
 
 struct sockaddr_in;
+struct sockaddr_in6;
 
 // This structure contains information about the HTTP request.
 struct sq_request_info {
@@ -88,6 +91,15 @@ struct sq_request_info {
   } http_headers[64];         // Maximum 64 headers
 };
 
+// Unified socket address. For IPv6 support, add IPv6 address structure
+// in the union u.
+union usa {
+  struct sockaddr sa;
+  struct sockaddr_in sin;
+#if defined(USE_IPV6)
+  struct sockaddr_in6 sin6;
+#endif
+};
 
 // This structure needs to be passed to sq_start(), to let squeasel know
 // which callbacks to invoke. For detailed description, see
@@ -225,6 +237,10 @@ const char **sq_get_valid_option_names(void);
 // Returns 0 on success, non-zero if an error occurred.
 int sq_get_bound_addresses(const struct sq_context *ctx, struct sockaddr_in ***addrs,
                            int *num_addrs);
+
+// Same as sq_get_bound_addresses, but uses the union to support IPv6
+int sq_get_bound_uaddresses(const struct sq_context *ctx, union usa ***addrs,
+                            int *num_addrs);
 
 // Add, edit or delete the entry in the passwords file.
 //
