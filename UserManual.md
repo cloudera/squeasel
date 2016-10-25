@@ -256,9 +256,23 @@ directory is commonly referenced as dot (`.`).
 
 ### ssl_certificate
 Path to SSL certificate file. This option is only required when at least one
-of the `listening_ports` is SSL. The file must be in PEM format,
-and it must have both private key and certificate, see for example
+of the `listening_ports` is SSL. The file must be in PEM format. If no
+separate `ssl_private_key` is specified, then this file
+must have both private key and certificate, see for example
 [ssl_cert.pem](https://github.com/cloudera/squeasel/blob/master/build/ssl_cert.pem)
+
+### ssl_private_key
+Path to the SSL private key file, if it is stored separately from the
+certificate PEM file.
+
+### ssl_private_key_password
+The password for the SSL private key.
+
+### ssl_global_init
+If 'yes' (the default), then Squeasel will handle the global initialization and
+teardown of the OpenSSL library. In particular, this sets the OpenSSL threading
+callbacks. If the embedding application is also performing this same initialization,
+then this option should be set to 'no' to prevent conflicts.
 
 ### num_threads `50`
 Number of worker threads. Squeasel handles each incoming connection in a
