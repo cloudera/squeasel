@@ -2,7 +2,7 @@
 # https://github.com/cloudera/squeasel
 #
 # Example custom build:
-# COPT="-g -O0 -DNO_SSL_DL -DUSE_LUA -llua -lcrypto -lssl" make linux
+# COPT="-g -O0 -DUSE_LUA -llua" make linux
 #
 # Flags are:
 # -DHAVE_MD5              - use system md5 library (-2kb)
@@ -100,7 +100,7 @@ lua.lib: $(LUA_WINOBJS)
 
 # To build with lua, make sure you have Lua unpacked into lua-5.2.1 directory
 linux_lua: $(ALL_OBJECTS)
-	$(CC) $(ALL_OBJECTS) -o $(PROG) -ldl
+	$(CC) $(ALL_OBJECTS) -o $(PROG) -ldl -lcrypto -lssl
 
 squeasel.o: mod_lua.c
 
@@ -109,7 +109,7 @@ squeasel.o: mod_lua.c
 # "-Wl,--as-needed" turned on by default  in cc command.
 # Also, this is turned in many other distros in static linkage builds.
 linux:
-	$(CC) squeasel.c main.c -o $(PROG) -ldl -lrt $(CFLAGS)
+	$(CC) squeasel.c main.c -o $(PROG) -ldl -lrt $(CFLAGS) -lcrypto -lssl
 
 mac: bsd
 bsd:

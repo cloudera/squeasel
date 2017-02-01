@@ -64,10 +64,18 @@
 #include <pwd.h>
 #include <unistd.h>
 #include <dirent.h>
-#if !defined(NO_SSL_DL) && !defined(NO_SSL)
-#include <dlfcn.h>
-#endif
 #include <pthread.h>
+#if defined(__MACH__)
+#define SSL_LIB   "libssl.dylib"
+#define CRYPTO_LIB  "libcrypto.dylib"
+#else
+#if !defined(SSL_LIB)
+#define SSL_LIB   "libssl.so"
+#endif
+#if !defined(CRYPTO_LIB)
+#define CRYPTO_LIB  "libcrypto.so"
+#endif
+#endif
 #ifndef O_BINARY
 #define O_BINARY  0
 #endif // O_BINARY
@@ -142,155 +150,8 @@ typedef int socklen_t;
 
 static const char *http_500_error = "Internal Server Error";
 
-#if defined(NO_SSL_DL)
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#else
-// SSL loaded dynamically from DLL.
-
-// Platform-specific dynamic library names. Platforms are inconsistent about
-// OpenSSL dynamic library versioning, so multiple fallbacks are necessary to
-// cover all possibilities.
-
-#define STRINGIFY2(X) #X
-#define STRINGIFY(X) STRINGIFY2(X)
-
-#if defined(SSL_LIB)
-const char* ssl_dylibs[] = { STRINGIFY(SSL_LIB) , NULL };
-#elif defined(__MACH__)
-const char* ssl_dylibs[] = {
-  "libssl.1.0.0.dylib", // Homebrew
-  "libssl.0.9.8.dylib", // OS X system OpenSSL
-  "libssl.dylib",       // fallback
-  NULL
-};
-#else
-const char* ssl_dylibs[] = {
-  "libssl.so.10",     // Centos 6 system OpenSSL
-  "libssl.so.1.0.0",  // Ubuntu system OpenSSL
-  "libssl.so",        // fallback
-  NULL
-};
-#endif
-
-#if defined(CRYPTO_LIB)
-const char* crypto_dylibs[] = { STRINGIFY(CRYPTO_LIB), NULL };
-#elif defined(__MACH__)
-const char* crypto_dylibs[] = {
-  "libcrypto.1.0.0.dylib",
-  "libcrypto.0.9.8.dylib",
-  "libcryto.dylib",
-  NULL
-};
-#else
-const char* crypto_dylibs[] = {
-  "libcrypto.so.10",
-  "libcrypto.so.1.0.0",
-  "libcryto.so",
-  NULL
-};
-#endif
-
-// I put the prototypes here to be independent from OpenSSL source installation.
-typedef struct ssl_st SSL;
-typedef struct ssl_method_st SSL_METHOD;
-typedef struct ssl_ctx_st SSL_CTX;
-
-struct ssl_func {
-  const char *name;   // SSL function name
-  void  (*ptr)(void); // Function pointer
-};
-
-// These constants and type signatures are copied from openssl/ssl.h.
-#define SSL_OP_NO_SSLv2 0x01000000L
-#define SSL_OP_NO_SSLv3 0x02000000L
-#define SSL_CTRL_OPTIONS 32
-
-typedef int pem_password_cb(char *buf, int size,
-                            int rwflag, void *userdata);
-
-#define SSL_free (* (void (*)(SSL *)) ssl_sw[0].ptr)
-#define SSL_accept (* (int (*)(SSL *)) ssl_sw[1].ptr)
-#define SSL_connect (* (int (*)(SSL *)) ssl_sw[2].ptr)
-#define SSL_read (* (int (*)(SSL *, void *, int)) ssl_sw[3].ptr)
-#define SSL_write (* (int (*)(SSL *, const void *,int)) ssl_sw[4].ptr)
-#define SSL_get_error (* (int (*)(SSL *, int)) ssl_sw[5].ptr)
-#define SSL_set_fd (* (int (*)(SSL *, SOCKET)) ssl_sw[6].ptr)
-#define SSL_new (* (SSL * (*)(SSL_CTX *)) ssl_sw[7].ptr)
-#define SSL_CTX_new (* (SSL_CTX * (*)(SSL_METHOD *)) ssl_sw[8].ptr)
-#define SSLv23_server_method (* (SSL_METHOD * (*)(void)) ssl_sw[9].ptr)
-#define SSL_library_init (* (int (*)(void)) ssl_sw[10].ptr)
-#define SSL_CTX_use_PrivateKey_file (* (int (*)(SSL_CTX *, \
-        const char *, int)) ssl_sw[11].ptr)
-#define SSL_CTX_use_certificate_file (* (int (*)(SSL_CTX *, \
-        const char *, int)) ssl_sw[12].ptr)
-#define SSL_CTX_set_default_passwd_cb \
-  (* (void (*)(SSL_CTX *, pem_password_cb *)) ssl_sw[13].ptr)
-#define SSL_CTX_free (* (void (*)(SSL_CTX *)) ssl_sw[14].ptr)
-#define SSL_load_error_strings (* (void (*)(void)) ssl_sw[15].ptr)
-#define SSL_CTX_use_certificate_chain_file \
-  (* (int (*)(SSL_CTX *, const char *)) ssl_sw[16].ptr)
-#define SSLv23_client_method (* (SSL_METHOD * (*)(void)) ssl_sw[17].ptr)
-#define SSL_pending (* (int (*)(SSL *)) ssl_sw[18].ptr)
-#define SSL_CTX_set_verify (* (void (*)(SSL_CTX *, int, int)) ssl_sw[19].ptr)
-#define SSL_shutdown (* (int (*)(SSL *)) ssl_sw[20].ptr)
-#define SSL_CTX_set_default_passwd_cb_userdata \
-  (* (void (*)(SSL_CTX *, void *)) ssl_sw[21].ptr)
-#define SSL_CTX_ctrl (* (int (*)(SSL_CTX *, int, int, void *)) ssl_sw[22].ptr)
-#define SSL_CTX_set_options(ctx,op) \
-  SSL_CTX_ctrl((ctx), SSL_CTRL_OPTIONS, (op), NULL)
-
-#define CRYPTO_num_locks (* (int (*)(void)) crypto_sw[0].ptr)
-#define CRYPTO_set_locking_callback \
-  (* (void (*)(void (*)(int, int, const char *, int))) crypto_sw[1].ptr)
-#define CRYPTO_set_id_callback \
-  (* (void (*)(unsigned long (*)(void))) crypto_sw[2].ptr)
-#define ERR_get_error (* (unsigned long (*)(void)) crypto_sw[3].ptr)
-#define ERR_error_string (* (char * (*)(unsigned long,char *)) crypto_sw[4].ptr)
-
-// set_ssl_option() function updates this array.
-// It loads SSL library dynamically and changes NULLs to the actual addresses
-// of respective functions. The macros above (like SSL_connect()) are really
-// just calling these functions indirectly via the pointer.
-static struct ssl_func ssl_sw[] = {
-  {"SSL_free",   NULL},
-  {"SSL_accept",   NULL},
-  {"SSL_connect",   NULL},
-  {"SSL_read",   NULL},
-  {"SSL_write",   NULL},
-  {"SSL_get_error",  NULL},
-  {"SSL_set_fd",   NULL},
-  {"SSL_new",   NULL},
-  {"SSL_CTX_new",   NULL},
-  {"SSLv23_server_method", NULL},
-  {"SSL_library_init",  NULL},
-  {"SSL_CTX_use_PrivateKey_file", NULL},
-  {"SSL_CTX_use_certificate_file",NULL},
-  {"SSL_CTX_set_default_passwd_cb",NULL},
-  {"SSL_CTX_free",  NULL},
-  {"SSL_load_error_strings", NULL},
-  {"SSL_CTX_use_certificate_chain_file", NULL},
-  {"SSLv23_client_method", NULL},
-  {"SSL_pending", NULL},
-  {"SSL_CTX_set_verify", NULL},
-  {"SSL_shutdown",   NULL},
-  {"SSL_CTX_set_default_passwd_cb_userdata", NULL},
-  {"SSL_CTX_ctrl", NULL},
-  {NULL,    NULL}
-};
-
-// Similar array as ssl_sw. These functions could be located in different lib.
-#if !defined(NO_SSL)
-static struct ssl_func crypto_sw[] = {
-  {"CRYPTO_num_locks",  NULL},
-  {"CRYPTO_set_locking_callback", NULL},
-  {"CRYPTO_set_id_callback", NULL},
-  {"ERR_get_error",  NULL},
-  {"ERR_error_string", NULL},
-  {NULL,    NULL}
-};
-#endif // NO_SSL
-#endif // NO_SSL_DL
 
 static const char *month_names[] = {
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -350,8 +211,8 @@ enum {
   ACCESS_LOG_FILE, ENABLE_DIRECTORY_LISTING, ERROR_LOG_FILE,
   GLOBAL_PASSWORDS_FILE, INDEX_FILES, ENABLE_KEEP_ALIVE, ACCESS_CONTROL_LIST,
   EXTRA_MIME_TYPES, LISTENING_PORTS, DOCUMENT_ROOT, SSL_CERTIFICATE, SSL_PRIVATE_KEY,
-  SSL_PRIVATE_KEY_PASSWORD, NUM_THREADS, RUN_AS_USER, REWRITE, HIDE_FILES,
-  REQUEST_TIMEOUT, NUM_OPTIONS
+  SSL_PRIVATE_KEY_PASSWORD, SSL_GLOBAL_INIT, NUM_THREADS, RUN_AS_USER, REWRITE,
+  HIDE_FILES, REQUEST_TIMEOUT, NUM_OPTIONS
 };
 
 static const char *config_options[] = {
@@ -377,6 +238,7 @@ static const char *config_options[] = {
   "ssl_certificate", NULL,
   "ssl_private_key", NULL,
   "ssl_private_key_password", NULL,
+  "ssl_global_init", "yes",
   "num_threads", "50",
   "run_as_user", NULL,
   "url_rewrite_patterns", NULL,
@@ -2136,8 +1998,6 @@ static SOCKET conn2(const char *host, int port, int use_ssl,
 
   if (host == NULL) {
     snprintf(ebuf, ebuf_len, "%s", "NULL host");
-  } else if (use_ssl && SSLv23_client_method == NULL) {
-    snprintf(ebuf, ebuf_len, "%s", "SSL is not initialized");
     // TODO(lsm): use something threadsafe instead of gethostbyname()
   } else if ((he = gethostbyname(host)) == NULL) {
     snprintf(ebuf, ebuf_len, "gethostbyname(%s): %s", host, strerror(ERRNO));
@@ -4319,40 +4179,6 @@ static int ssl_password_callback(char *password, int size, int unused, void *dat
   return strlen(password);
 }
 
-#if !defined(NO_SSL_DL)
-static int load_dll(struct sq_context *ctx, const char* dll_names[], struct ssl_func *sw) {
-  union {void *p; void (*fp)(void);} u;
-  void  *dll_handle;
-  struct ssl_func *fp;
-  int dll_names_idx;
-
-  assert(dll_names[0] != NULL);
-  for (dll_names_idx = 0; dll_names[dll_names_idx] != NULL; dll_names_idx++) {
-    if ((dll_handle = dlopen(dll_names[dll_names_idx], RTLD_LAZY)) != NULL) {
-      break;
-    }
-  }
-  if (dll_handle == NULL) {
-    cry(fc(ctx), "%s: cannot load %s", __func__, dll_names[0]);
-    return 0;
-  }
-
-  for (fp = sw; fp->name != NULL; fp++) {
-    // dlsym() on UNIX returns void *. ISO C forbids casts of data pointers to
-    // function pointers. We need to use a union to make a cast.
-    u.p = dlsym(dll_handle, fp->name);
-    if (u.fp == NULL) {
-      cry(fc(ctx), "%s: %s: cannot find %s", __func__, dll_names[dll_names_idx], fp->name);
-      return 0;
-    } else {
-      fp->ptr = u.fp;
-    }
-  }
-
-  return 1;
-}
-#endif // NO_SSL_DL
-
 // Dynamically load SSL library. Set up ctx->ssl_ctx pointer.
 static int set_ssl_option(struct sq_context *ctx) {
   int i, size;
@@ -4368,18 +4194,38 @@ static int set_ssl_option(struct sq_context *ctx) {
   const char *private_key = ctx->config[SSL_PRIVATE_KEY];
   if (private_key == NULL) private_key = pem;
 
-#if !defined(NO_SSL_DL)
-  if (!load_dll(ctx, ssl_dylibs, ssl_sw) ||
-      !load_dll(ctx, crypto_dylibs, crypto_sw)) {
-    return 0;
-  }
-#endif // NO_SSL_DL
+  // Initialize SSL library, unless the user has disabled this.
+  int should_init_ssl = (sq_strcasecmp(ctx->config[SSL_GLOBAL_INIT], "yes") == 0);
+  if (should_init_ssl) {
+    SSL_library_init();
+    SSL_load_error_strings();
+    // Initialize locking callbacks, needed for thread safety.
+    // http://www.openssl.org/support/faq.html#PROG1
+    size = sizeof(pthread_mutex_t) * CRYPTO_num_locks();
+    if ((ssl_mutexes = (pthread_mutex_t *) malloc((size_t)size)) == NULL) {
+      cry(fc(ctx), "%s: cannot allocate mutexes: %s", __func__, ssl_error());
+      return 0;
+    }
 
-  // Initialize SSL library
-  SSL_library_init();
-  SSL_load_error_strings();
+    for (i = 0; i < CRYPTO_num_locks(); i++) {
+      pthread_mutex_init(&ssl_mutexes[i], NULL);
+    }
+
+    CRYPTO_set_locking_callback(&ssl_locking_callback);
+    CRYPTO_set_id_callback(&ssl_id_callback);
+  }
 
   if ((ctx->ssl_ctx = SSL_CTX_new(SSLv23_server_method())) == NULL) {
+    unsigned long err_code = ERR_peek_error();
+    // If it looks like the error is due to SSL not being initialized,
+    // provide a better error.
+    if (!should_init_ssl &&
+        ERR_GET_LIB(err_code) == ERR_LIB_SSL &&
+        ERR_GET_REASON(err_code) == SSL_R_LIBRARY_HAS_NO_CIPHERS) {
+      cry(fc(ctx), "SSL_CTX_new failed: %s was disabled: OpenSSL must "
+                   "be initialized before starting squeasel",
+                   config_options[SSL_GLOBAL_INIT * 2]);
+    }
     cry(fc(ctx), "SSL_CTX_new (server) error: %s", ssl_error());
     return 0;
   }
@@ -4405,32 +4251,18 @@ static int set_ssl_option(struct sq_context *ctx) {
     (void) SSL_CTX_use_certificate_chain_file(ctx->ssl_ctx, pem);
   }
 
-  // Initialize locking callbacks, needed for thread safety.
-  // http://www.openssl.org/support/faq.html#PROG1
-  size = sizeof(pthread_mutex_t) * CRYPTO_num_locks();
-  if ((ssl_mutexes = (pthread_mutex_t *) malloc((size_t)size)) == NULL) {
-    cry(fc(ctx), "%s: cannot allocate mutexes: %s", __func__, ssl_error());
-    return 0;
-  }
-
-  for (i = 0; i < CRYPTO_num_locks(); i++) {
-    pthread_mutex_init(&ssl_mutexes[i], NULL);
-  }
-
-  CRYPTO_set_locking_callback(&ssl_locking_callback);
-  CRYPTO_set_id_callback(&ssl_id_callback);
 
   return 1;
 }
 
 static void uninitialize_ssl(struct sq_context *ctx) {
   int i;
-  if (ctx->ssl_ctx != NULL) {
+  if (ctx->ssl_ctx != NULL &&
+      sq_strcasecmp(ctx->config[SSL_GLOBAL_INIT], "yes") == 0) {
     CRYPTO_set_locking_callback(NULL);
     for (i = 0; i < CRYPTO_num_locks(); i++) {
       pthread_mutex_destroy(&ssl_mutexes[i]);
     }
-    CRYPTO_set_locking_callback(NULL);
     CRYPTO_set_id_callback(NULL);
   }
 }
