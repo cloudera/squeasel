@@ -4232,6 +4232,7 @@ static int set_ssl_option(struct sq_context *ctx) {
 #endif
   } else {
     cry(fc(ctx), "%s: unknown SSL version: %s", __func__, ssl_version);
+    return 0;
   }
 
   ctx->ssl_ctx = SSL_CTX_new(SSLv23_method());
