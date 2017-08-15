@@ -274,6 +274,15 @@ teardown of the OpenSSL library. In particular, this sets the OpenSSL threading
 callbacks. If the embedding application is also performing this same initialization,
 then this option should be set to 'no' to prevent conflicts.
 
+### ssl_min_version
+The minimum protocol version that Squeasel will allow clients to use when using a secure
+connection. Accepted values are "tlsv1", "tlsv1.1" and "tlsv1.2". The default is "tlsv1".
+
+### ssl_ciphers
+The set of allowed cipher suites that clients may connect with when using a secure
+connection. Cipher suites should be listed in OpenSSL format. If not set, the system
+default is used. See man(1) ciphers for more information.
+
 ### num_threads `50`
 Number of worker threads. Squeasel handles each incoming connection in a
 separate thread. Therefore, the value of this option is effectively a number

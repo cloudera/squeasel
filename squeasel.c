@@ -153,6 +153,8 @@ static const char *http_500_error = "Internal Server Error";
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+#define OPENSSL_VERSION_HAS_TLS_1_1 0x10001000L
+
 static const char *month_names[] = {
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
@@ -212,7 +214,7 @@ enum {
   GLOBAL_PASSWORDS_FILE, INDEX_FILES, ENABLE_KEEP_ALIVE, ACCESS_CONTROL_LIST,
   EXTRA_MIME_TYPES, LISTENING_PORTS, DOCUMENT_ROOT, SSL_CERTIFICATE, SSL_PRIVATE_KEY,
   SSL_PRIVATE_KEY_PASSWORD, SSL_GLOBAL_INIT, NUM_THREADS, RUN_AS_USER, REWRITE,
-  HIDE_FILES, REQUEST_TIMEOUT, NUM_OPTIONS
+  HIDE_FILES, REQUEST_TIMEOUT, SSL_VERSION, SSL_CIPHERS, NUM_OPTIONS
 };
 
 static const char *config_options[] = {
@@ -244,6 +246,8 @@ static const char *config_options[] = {
   "url_rewrite_patterns", NULL,
   "hide_files_patterns", NULL,
   "request_timeout_ms", "30000",
+  "ssl_min_version", "tlsv1",
+  "ssl_ciphers", NULL,
   NULL
 };
 
@@ -4139,6 +4143,7 @@ static int set_uid_option(struct sq_context *ctx) {
 }
 
 #if !defined(NO_SSL)
+
 static pthread_mutex_t *ssl_mutexes;
 
 static int sslize(struct sq_connection *conn, SSL_CTX *s, int (*func)(SSL *)) {
@@ -4215,7 +4220,22 @@ static int set_ssl_option(struct sq_context *ctx) {
     CRYPTO_set_id_callback(&ssl_id_callback);
   }
 
-  if ((ctx->ssl_ctx = SSL_CTX_new(SSLv23_server_method())) == NULL) {
+  char* ssl_version = ctx->config[SSL_VERSION];
+  int options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
+  if (sq_strcasecmp(ssl_version, "tlsv1") == 0) {
+    // No-op - don't exclude any TLS protocols.
+#if OPENSSL_VERSION_NUMBER >= OPENSSL_VERSION_HAS_TLS_1_1
+  } else if (sq_strcasecmp(ssl_version, "tlsv1.1") == 0) {
+    options |= SSL_OP_NO_TLSv1;
+  } else if (sq_strcasecmp(ssl_version, "tlsv1.2") == 0) {
+    options |= (SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1);
+#endif
+  } else {
+    cry(fc(ctx), "%s: unknown SSL version: %s", __func__, ssl_version);
+  }
+
+  ctx->ssl_ctx = SSL_CTX_new(SSLv23_method());
+  if (ctx->ssl_ctx == NULL) {
     unsigned long err_code = ERR_peek_error();
     // If it looks like the error is due to SSL not being initialized,
     // provide a better error.
@@ -4230,7 +4250,7 @@ static int set_ssl_option(struct sq_context *ctx) {
     return 0;
   }
 
-  SSL_CTX_set_options(ctx->ssl_ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+  SSL_CTX_set_options(ctx->ssl_ctx, options);
 
   if (ctx->config[SSL_PRIVATE_KEY_PASSWORD] != NULL) {
     SSL_CTX_set_default_passwd_cb(ctx->ssl_ctx, ssl_password_callback);
@@ -4251,6 +4271,12 @@ static int set_ssl_option(struct sq_context *ctx) {
     (void) SSL_CTX_use_certificate_chain_file(ctx->ssl_ctx, pem);
   }
 
+  if (ctx->config[SSL_CIPHERS] != NULL &&
+      (SSL_CTX_set_cipher_list(ctx->ssl_ctx, ctx->config[SSL_CIPHERS]) == 0)) {
+    cry(fc(ctx), "SSL_CTX_set_cipher_list: error setting ciphers (%s): %s",
+        ctx->config[SSL_CIPHERS], ssl_error());
+    return 0;
+  }
 
   return 1;
 }
