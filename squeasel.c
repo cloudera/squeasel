@@ -153,7 +153,14 @@ static const char *http_500_error = "Internal Server Error";
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-#define OPENSSL_VERSION_HAS_TLS_1_1 0x10001000L
+// If these constants aren't defined, we still need them to compile and maintain backwards
+// compatibility with pre-1.0.1 OpenSSL.
+#ifndef SSL_OP_NO_TLSv1
+#define SSL_OP_NO_TLSv1 0x04000000U
+#endif
+#ifndef SSL_OP_NO_TLSv1_1
+#define SSL_OP_NO_TLSv1_1 0x10000000U
+#endif
 
 static const char *month_names[] = {
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -4224,12 +4231,10 @@ static int set_ssl_option(struct sq_context *ctx) {
   int options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
   if (sq_strcasecmp(ssl_version, "tlsv1") == 0) {
     // No-op - don't exclude any TLS protocols.
-#if OPENSSL_VERSION_NUMBER >= OPENSSL_VERSION_HAS_TLS_1_1
   } else if (sq_strcasecmp(ssl_version, "tlsv1.1") == 0) {
     options |= SSL_OP_NO_TLSv1;
   } else if (sq_strcasecmp(ssl_version, "tlsv1.2") == 0) {
     options |= (SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1);
-#endif
   } else {
     cry(fc(ctx), "%s: unknown SSL version: %s", __func__, ssl_version);
     return 0;
