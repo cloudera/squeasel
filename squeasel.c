@@ -4256,7 +4256,11 @@ static int set_ssl_option(struct sq_context *ctx) {
     return 0;
   }
 
-  SSL_CTX_set_options(ctx->ssl_ctx, options);
+  if ((SSL_CTX_set_options(ctx->ssl_ctx, options) & options) != options) {
+    cry(fc(ctx), "SSL_CTX_set_options (server) error: could not set options (%d)",
+        options);
+    return 0;
+  }
 
   if (ctx->config[SSL_PRIVATE_KEY_PASSWORD] != NULL) {
     SSL_CTX_set_default_passwd_cb(ctx->ssl_ctx, ssl_password_callback);
