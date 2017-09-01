@@ -150,6 +150,7 @@ typedef int socklen_t;
 
 static const char *http_500_error = "Internal Server Error";
 
+#include <openssl/crypto.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
@@ -161,6 +162,8 @@ static const char *http_500_error = "Internal Server Error";
 #ifndef SSL_OP_NO_TLSv1_1
 #define SSL_OP_NO_TLSv1_1 0x10000000U
 #endif
+
+#define OPENSSL_MIN_VERSION_WITH_TLS_1_1 0x10001000L
 
 static const char *month_names[] = {
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -4232,8 +4235,16 @@ static int set_ssl_option(struct sq_context *ctx) {
   if (sq_strcasecmp(ssl_version, "tlsv1") == 0) {
     // No-op - don't exclude any TLS protocols.
   } else if (sq_strcasecmp(ssl_version, "tlsv1.1") == 0) {
+    if (SSLeay() < OPENSSL_MIN_VERSION_WITH_TLS_1_1) {
+      cry(fc(ctx), "Unsupported TLS version: %s", ssl_version);
+      return 0;
+    }
     options |= SSL_OP_NO_TLSv1;
   } else if (sq_strcasecmp(ssl_version, "tlsv1.2") == 0) {
+    if (SSLeay() < OPENSSL_MIN_VERSION_WITH_TLS_1_1) {
+      cry(fc(ctx), "Unsupported TLS version: %s", ssl_version);
+      return 0;
+    }
     options |= (SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1);
   } else {
     cry(fc(ctx), "%s: unknown SSL version: %s", __func__, ssl_version);
