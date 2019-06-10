@@ -925,7 +925,7 @@ static int pull(FILE *fp, struct sq_connection *conn, char *buf, int len) {
 #endif
   } else {
     RETRY_ON_EINTR(nread, recv(conn->client.sock, buf, (size_t) len, 0));
-    if (nread == -1) {
+    if (nread == -1 && errno != EAGAIN) {
       cry(conn, "error reading: %s", strerror(errno));
     }
   }
