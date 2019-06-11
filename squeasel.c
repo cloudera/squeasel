@@ -4380,7 +4380,14 @@ static int is_valid_uri(const char *uri) {
   return uri[0] == '/' || (uri[0] == '*' && uri[1] == '\0');
 }
 
-static int getreq(struct sq_connection *conn, char *ebuf, size_t ebuf_len) {
+
+typedef enum {
+  GETREQ_OK,
+  GETREQ_KEEPALIVE_TIMEOUT,
+  GETREQ_ERROR
+} GetReqResult;
+
+static GetReqResult getreq(struct sq_connection *conn, char *ebuf, size_t ebuf_len) {
   const char *cl;
 
   ebuf[0] = '\0';
@@ -4391,11 +4398,13 @@ static int getreq(struct sq_connection *conn, char *ebuf, size_t ebuf_len) {
 
   if (conn->request_len == 0 && conn->data_len == conn->buf_size) {
     snprintf(ebuf, ebuf_len, "%s", "Request Too Large");
+    return GETREQ_ERROR;
   } else if (conn->request_len <= 0) {
-    snprintf(ebuf, ebuf_len, "%s", "Client closed connection");
+    return GETREQ_KEEPALIVE_TIMEOUT;
   } else if (parse_http_message(conn->buf, conn->buf_size,
                                 &conn->request_info) <= 0) {
     snprintf(ebuf, ebuf_len, "Bad request: [%.*s]", conn->data_len, conn->buf);
+    return GETREQ_ERROR;
   } else {
     // Request is valid
     if ((cl = get_header(&conn->request_info, "Content-Length")) != NULL) {
@@ -4408,7 +4417,7 @@ static int getreq(struct sq_connection *conn, char *ebuf, size_t ebuf_len) {
     }
     conn->birth_time = time(NULL);
   }
-  return ebuf[0] == '\0';
+  return GETREQ_OK;
 }
 
 struct sq_connection *sq_download(const char *host, int port, int use_ssl,
@@ -4437,6 +4446,7 @@ static void process_new_connection(struct sq_connection *conn) {
   struct sq_request_info *ri = &conn->request_info;
   int keep_alive_enabled, keep_alive, discard_len;
   char ebuf[100];
+  GetReqResult getreq_status;
 
   keep_alive_enabled = !strcmp(conn->ctx->config[ENABLE_KEEP_ALIVE], "yes");
   keep_alive = 0;
@@ -4445,8 +4455,11 @@ static void process_new_connection(struct sq_connection *conn) {
   // to crule42.
   conn->data_len = 0;
   do {
-    if (!getreq(conn, ebuf, sizeof(ebuf))) {
-      send_http_error(conn, 500, "Server Error", "%s", ebuf);
+    getreq_status = getreq(conn, ebuf, sizeof(ebuf));
+    if (getreq_status != GETREQ_OK) {
+      if (getreq_status == GETREQ_ERROR) {
+        send_http_error(conn, 500, "Server Error", "%s", ebuf);
+      }
       conn->must_close = 1;
     } else if (!is_valid_uri(conn->request_info.uri)) {
       char* encoded = (char*) malloc(SQ_BUF_LEN);
@@ -4460,7 +4473,7 @@ static void process_new_connection(struct sq_connection *conn) {
       send_http_error(conn, 505, "Bad HTTP version", "%s", ebuf);
     }
 
-    if (ebuf[0] == '\0') {
+    if (getreq_status == GETREQ_OK) {
       handle_request(conn);
       if (conn->ctx->callbacks.end_request != NULL) {
         conn->ctx->callbacks.end_request(conn, conn->status_code);
