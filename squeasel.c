@@ -3861,6 +3861,7 @@ static void handle_request(struct sq_connection *conn) {
   char path[PATH_MAX];
   int uri_len, ssl_index;
   struct file file = STRUCT_FILE_INITIALIZER;
+  sq_callback_result_t callback_result = SQ_HANDLED_OK;
 
   if ((conn->request_info.query_string = strchr(ri->uri, '?')) != NULL) {
     * ((char *) conn->request_info.query_string++) = '\0';
@@ -3882,8 +3883,10 @@ static void handle_request(struct sq_connection *conn) {
              !check_authorization(conn, path)) {
     send_authorization_request(conn);
   } else if (conn->ctx->callbacks.begin_request != NULL &&
-      conn->ctx->callbacks.begin_request(conn)) {
+      ((callback_result = conn->ctx->callbacks.begin_request(conn))
+          != SQ_CONTINUE_HANDLING)) {
     // Do nothing, callback has served the request
+    conn->must_close = (callback_result == SQ_HANDLED_CLOSE_CONNECTION);
 #if defined(USE_WEBSOCKET)
   } else if (is_websocket_request(conn)) {
     handle_websocket_request(conn);
