@@ -920,6 +920,18 @@ static int64_t push(FILE *fp, SOCKET sock, SSL *ssl, const char *buf,
   return sent;
 }
 
+// Wait for either 'fd' or 'wakeup_fds' to have readable data.
+static void wait_for_readable_or_wakeup(struct sq_context *ctx,
+    int fd, int timeout_ms) {
+  struct pollfd pfd[2];
+  pfd[0].fd = fd;
+  pfd[0].events = POLLIN;
+  pfd[1].fd = ctx->wakeup_fds[0];
+  pfd[1].events = POLLIN;
+  int poll_rc;
+  RETRY_ON_EINTR(poll_rc, poll(pfd, 2, timeout_ms));
+}
+
 // Read from IO channel - opened file descriptor, socket, or SSL descriptor.
 // Return negative value on error, or number of bytes read on success.
 static int pull(FILE *fp, struct sq_connection *conn, char *buf, int len) {
@@ -2526,6 +2538,14 @@ static int read_request(FILE *fp, struct sq_connection *conn,
   int request_len, n = 0;
 
   request_len = get_request_len(buf, *nread);
+  if (request_len == 0) {
+    // If we are starting to read a new request, with nothing buffered,
+    // wait for either the beginning of the request, or for the shutdown
+    // signal.
+    wait_for_readable_or_wakeup(conn->ctx, fp ? fileno(fp) : conn->client.sock,
+        atoi(conn->ctx->config[REQUEST_TIMEOUT]));
+  }
+
   while (conn->ctx->stop_flag == 0 &&
          *nread < bufsiz && request_len == 0 &&
          (n = pull(fp, conn, buf + *nread, bufsiz - *nread)) > 0) {
