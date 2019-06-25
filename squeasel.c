@@ -150,6 +150,7 @@ typedef int socklen_t;
 
 static const char *http_500_error = "Internal Server Error";
 
+#include <openssl/crypto.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
@@ -161,6 +162,8 @@ static const char *http_500_error = "Internal Server Error";
 #ifndef SSL_OP_NO_TLSv1_1
 #define SSL_OP_NO_TLSv1_1 0x10000000U
 #endif
+
+#define OPENSSL_MIN_VERSION_WITH_TLS_1_1 0x10001000L
 
 static const char *month_names[] = {
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -920,6 +923,18 @@ static int64_t push(FILE *fp, SOCKET sock, SSL *ssl, const char *buf,
   return sent;
 }
 
+// Wait for either 'fd' or 'wakeup_fds' to have readable data.
+static void wait_for_readable_or_wakeup(struct sq_context *ctx,
+    int fd, int timeout_ms) {
+  struct pollfd pfd[2];
+  pfd[0].fd = fd;
+  pfd[0].events = POLLIN;
+  pfd[1].fd = ctx->wakeup_fds[0];
+  pfd[1].events = POLLIN;
+  int poll_rc;
+  RETRY_ON_EINTR(poll_rc, poll(pfd, 2, timeout_ms));
+}
+
 // Read from IO channel - opened file descriptor, socket, or SSL descriptor.
 // Return negative value on error, or number of bytes read on success.
 static int pull(FILE *fp, struct sq_connection *conn, char *buf, int len) {
@@ -1054,6 +1069,7 @@ static int alloc_vprintf2(char **buf, const char *fmt, va_list ap) {
     if (!*buf) break;
     va_copy(ap_copy, ap);
     len = vsnprintf(*buf, size, fmt, ap_copy);
+    va_end(ap_copy);
   }
 
   return len;
@@ -1073,12 +1089,14 @@ static int alloc_vprintf(char **buf, size_t size, const char *fmt, va_list ap) {
   // On second pass, actually print the message.
   va_copy(ap_copy, ap);
   len = vsnprintf(NULL, 0, fmt, ap_copy);
+  va_end(ap_copy);
 
   if (len < 0) {
     // C runtime is not standard compliant, vsnprintf() returned -1.
     // Switch to alternative code path that uses incremental allocations.
     va_copy(ap_copy, ap);
     len = alloc_vprintf2(buf, fmt, ap);
+    va_end(ap_copy);
   } else if (len > (int) size &&
       (size = len + 1) > 0 &&
       (*buf = (char *) malloc(size)) == NULL) {
@@ -1086,6 +1104,7 @@ static int alloc_vprintf(char **buf, size_t size, const char *fmt, va_list ap) {
   } else {
     va_copy(ap_copy, ap);
     vsnprintf(*buf, size, fmt, ap_copy);
+    va_end(ap_copy);
   }
 
   return len;
@@ -1108,7 +1127,9 @@ int sq_vprintf(struct sq_connection *conn, const char *fmt, va_list ap) {
 int sq_printf(struct sq_connection *conn, const char *fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  return sq_vprintf(conn, fmt, ap);
+  int ret_val = sq_vprintf(conn, fmt, ap);
+  va_end(ap);
+  return ret_val;
 }
 
 int sq_url_decode(const char *src, int src_len, char *dst,
@@ -2526,6 +2547,14 @@ static int read_request(FILE *fp, struct sq_connection *conn,
   int request_len, n = 0;
 
   request_len = get_request_len(buf, *nread);
+  if (request_len == 0) {
+    // If we are starting to read a new request, with nothing buffered,
+    // wait for either the beginning of the request, or for the shutdown
+    // signal.
+    wait_for_readable_or_wakeup(conn->ctx, fp ? fileno(fp) : conn->client.sock,
+        atoi(conn->ctx->config[REQUEST_TIMEOUT]));
+  }
+
   while (conn->ctx->stop_flag == 0 &&
          *nread < bufsiz && request_len == 0 &&
          (n = pull(fp, conn, buf + *nread, bufsiz - *nread)) > 0) {
@@ -3841,6 +3870,7 @@ static void handle_request(struct sq_connection *conn) {
   char path[PATH_MAX];
   int uri_len, ssl_index;
   struct file file = STRUCT_FILE_INITIALIZER;
+  sq_callback_result_t callback_result = SQ_HANDLED_OK;
 
   if ((conn->request_info.query_string = strchr(ri->uri, '?')) != NULL) {
     * ((char *) conn->request_info.query_string++) = '\0';
@@ -3862,8 +3892,10 @@ static void handle_request(struct sq_connection *conn) {
              !check_authorization(conn, path)) {
     send_authorization_request(conn);
   } else if (conn->ctx->callbacks.begin_request != NULL &&
-      conn->ctx->callbacks.begin_request(conn)) {
+      ((callback_result = conn->ctx->callbacks.begin_request(conn))
+          != SQ_CONTINUE_HANDLING)) {
     // Do nothing, callback has served the request
+    conn->must_close = (callback_result == SQ_HANDLED_CLOSE_CONNECTION);
 #if defined(USE_WEBSOCKET)
   } else if (is_websocket_request(conn)) {
     handle_websocket_request(conn);
@@ -4232,8 +4264,16 @@ static int set_ssl_option(struct sq_context *ctx) {
   if (sq_strcasecmp(ssl_version, "tlsv1") == 0) {
     // No-op - don't exclude any TLS protocols.
   } else if (sq_strcasecmp(ssl_version, "tlsv1.1") == 0) {
+    if (SSLeay() < OPENSSL_MIN_VERSION_WITH_TLS_1_1) {
+      cry(fc(ctx), "Unsupported TLS version: %s", ssl_version);
+      return 0;
+    }
     options |= SSL_OP_NO_TLSv1;
   } else if (sq_strcasecmp(ssl_version, "tlsv1.2") == 0) {
+    if (SSLeay() < OPENSSL_MIN_VERSION_WITH_TLS_1_1) {
+      cry(fc(ctx), "Unsupported TLS version: %s", ssl_version);
+      return 0;
+    }
     options |= (SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1);
   } else {
     cry(fc(ctx), "%s: unknown SSL version: %s", __func__, ssl_version);
@@ -4256,7 +4296,11 @@ static int set_ssl_option(struct sq_context *ctx) {
     return 0;
   }
 
-  SSL_CTX_set_options(ctx->ssl_ctx, options);
+  if ((SSL_CTX_set_options(ctx->ssl_ctx, options) & options) != options) {
+    cry(fc(ctx), "SSL_CTX_set_options (server) error: could not set options (%d)",
+        options);
+    return 0;
+  }
 
   if (ctx->config[SSL_PRIVATE_KEY_PASSWORD] != NULL) {
     SSL_CTX_set_default_passwd_cb(ctx->ssl_ctx, ssl_password_callback);
@@ -4496,6 +4540,7 @@ struct sq_connection *sq_download(const char *host, int port, int use_ssl,
     sq_close_connection(conn);
     conn = NULL;
   }
+  va_end(ap);
 
   return conn;
 }
