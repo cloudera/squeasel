@@ -4336,11 +4336,12 @@ static int set_ssl_option(struct sq_context *ctx) {
     EC_KEY* ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
     if (ecdh == NULL) {
       cry(fc(ctx), "EC_KEY_new_by_curve_name: %s", ssl_error());
-    }
-
-    int rc = SSL_CTX_set_tmp_ecdh(ctx->ssl_ctx, ecdh);
-    if (rc <= 0) {
-      cry(fc(ctx), "SSL_CTX_set_tmp_ecdh: %s", ssl_error());
+    } else {
+      int rc = SSL_CTX_set_tmp_ecdh(ctx->ssl_ctx, ecdh);
+      if (rc <= 0) {
+        cry(fc(ctx), "SSL_CTX_set_tmp_ecdh: %s", ssl_error());
+      }
+      EC_KEY_free(ecdh);
     }
 #elif OPENSSL_VERSION_NUMBER < 0x10100000L
     // OpenSSL 1.0.2 provides the set_ecdh_auto API which internally figures out
