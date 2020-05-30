@@ -55,6 +55,7 @@
 #include <sys/socket.h>
 #include <sys/poll.h>
 #include <netinet/in.h>
+#include <net/if.h>
 #include <arpa/inet.h>
 #include <sys/time.h>
 #include <stdint.h>
@@ -4015,6 +4016,7 @@ static int parse_port_string(const struct vec *vec, struct socket *so) {
   int len;
 #if defined(USE_IPV6)
   char buf[100];
+  char device[100];
 #endif
 
   // MacOS needs that. If we do not zero it, subsequent bind() will fail.
@@ -4029,11 +4031,12 @@ static int parse_port_string(const struct vec *vec, struct socket *so) {
     so->lsa.sin.sin_port = htons((uint16_t) port);
 #if defined(USE_IPV6)
 
-  } else if (sscanf(vec->ptr, "[%49[^]]]:%d%n", buf, &port, &len) == 2 &&
+  } else if (sscanf(vec->ptr, "[%49[^]]]:%d[%49[^]]]%n", buf, &port, device, &len) == 3 &&
              inet_pton(AF_INET6, buf, &so->lsa.sin6.sin6_addr)) {
-    // IPv6 address, e.g. [3ffe:2a00:100:7031::1]:8080
+    // IPv6 address, e.g. [3ffe:2a00:100:7031::1]:8080[eth0]s
     so->lsa.sin6.sin6_family = AF_INET6;
     so->lsa.sin6.sin6_port = htons((uint16_t) port);
+    so->lsa.sin6.sin6_scope_id = if_nametoindex(device);
 #endif
   } else if (sscanf(vec->ptr, "%u%n", &port, &len) == 1) {
     // If only port is specified, bind to IPv4, INADDR_ANY
