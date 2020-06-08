@@ -870,7 +870,7 @@ int sq_get_bound_addresses(const struct sq_context *ctx, struct sockaddr_in ***a
   *addrs = addr_array;
 
   for (i = 0; i < n; i++) {
-    addr_array[i] = malloc(sizeof(*addr_array[i]));
+    addr_array[i] = malloc(sizeof(struct sockaddr_storage));
     if (addr_array[i] == NULL) {
       cry(fc(ctx), "%s: cannot allocate memory", __func__);
       goto cleanup;
